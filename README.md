@@ -23,14 +23,7 @@ Application de radiogoniométrie pour les opérations SATER (Sauvetage Aéro-Ter
 - Python 3.8 ou supérieur
 - Connexion Internet (pour les fonds de carte en ligne)
 
-### Linux / macOS
 ```bash
-pip install -r requirements.txt
-python main.py
-```
-
-### Windows
-```powershell
 pip install -r requirements.txt
 python main.py
 ```
@@ -41,8 +34,6 @@ Voir `BUILD_WINDOWS.md` pour les instructions détaillées.
 
 **Méthode rapide :**
 ```powershell
-# Double-cliquer sur build_windows.bat
-# ou exécuter :
 .\build_windows.bat
 ```
 
@@ -89,7 +80,3 @@ SATER_Map/
 ## Licence
 
 Développé pour les ADRASEC - Licence libre
-
-## Contact
-
-ADRASEC - Association Départementale des Radioamateurs au Service de la Sécurité Civile
