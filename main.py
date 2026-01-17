@@ -313,22 +313,18 @@ def line_intersection(p1: Tuple[float, float], p2: Tuple[float, float],
 
 
 def calculate_all_intersections(stations: List[Station], azimuth_length_km: float = 100) -> List[Tuple[float, float]]:
-    """Calcule les intersections entre tous les azimuts.
-    Note: utilise une longueur fixe très grande pour le calcul géométrique
-    afin que le centre ne dépende pas de la longueur d'affichage."""
+    """Calcule les intersections entre tous les azimuts."""
     intersections = []
-    
-    # Utiliser une longueur fixe très grande pour le calcul géométrique
-    # Cela garantit que le centre de la zone ne change pas avec la longueur d'affichage
-    calc_length = 1000  # 1000 km pour les calculs
     
     for i in range(len(stations)):
         for j in range(i + 1, len(stations)):
             s1, s2 = stations[i], stations[j]
             
-            end1 = calc_endpoint_haversine(s1.lat, s1.lon, s1.azimuth, calc_length)
-            end2 = calc_endpoint_haversine(s2.lat, s2.lon, s2.azimuth, calc_length)
+            # Calculer les endpoints avec la longueur d'affichage
+            end1 = calc_endpoint_haversine(s1.lat, s1.lon, s1.azimuth, azimuth_length_km)
+            end2 = calc_endpoint_haversine(s2.lat, s2.lon, s2.azimuth, azimuth_length_km)
             
+            # Calculer l'intersection des lignes
             inter = line_intersection(
                 (s1.lon, s1.lat), (end1[1], end1[0]),
                 (s2.lon, s2.lat), (end2[1], end2[0])
@@ -337,11 +333,14 @@ def calculate_all_intersections(stations: List[Station], azimuth_length_km: floa
             if inter:
                 int_lon, int_lat = inter
                 
+                # Vérifier que l'intersection est dans la direction de l'azimut
+                # (pas derrière la station)
                 dir1_to_inter = atan2(int_lon - s1.lon, int_lat - s1.lat)
                 dir1_azimuth = radians(s1.azimuth)
                 dir2_to_inter = atan2(int_lon - s2.lon, int_lat - s2.lat)
                 dir2_azimuth = radians(s2.azimuth)
                 
+                # Normaliser les différences d'angle
                 diff1 = abs(dir1_to_inter - dir1_azimuth)
                 diff2 = abs(dir2_to_inter - dir2_azimuth)
                 
@@ -350,6 +349,7 @@ def calculate_all_intersections(stations: List[Station], azimuth_length_km: floa
                 if diff2 > pi:
                     diff2 = 2 * pi - diff2
                 
+                # L'intersection doit être "devant" les deux stations (différence < 90°)
                 if diff1 < pi / 2 and diff2 < pi / 2:
                     if -90 <= int_lat <= 90 and -180 <= int_lon <= 180:
                         intersections.append((int_lat, int_lon))
