@@ -6,30 +6,31 @@ SATER  Map - Version 2.0
 
 import json
 import os
-import shutil
 import sys
 import tempfile
+import shutil
 import threading
 import urllib.request
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime, timedelta
-from math import cos, degrees, radians, sin, tan, atan2, sqrt, pi, asin, log
+from math import cos, degrees, radians, sin, tan, atan2, sqrt, pi, asin, floor, log
 from typing import Optional, List, Tuple, Dict
 
-from PyQt6.QtCore import QObject, Qt, QTimer, QUrl, pyqtSignal
-from PyQt6.QtGui import QAction, QIcon, QColor
-from PyQt6.QtWebEngineCore import QWebEngineSettings
+from PyQt6.QtCore import QObject, Qt, QTimer, QUrl, pyqtSignal, QTime
+from PyQt6.QtGui import QAction, QIcon, QColor, QFont
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineSettings
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
                              QDoubleSpinBox, QFileDialog, QGroupBox,
                              QHBoxLayout, QLabel, QLineEdit, QMainWindow,
                              QMessageBox, QPushButton, QSlider, QSpinBox, QStyle,
                              QVBoxLayout, QWidget, QStatusBar, QFormLayout,
-                             QTextEdit, QSplitter, QProgressDialog,
+                             QTextEdit, QSplitter, QScrollArea, QProgressDialog,
                              QLCDNumber, QTableWidget, QTableWidgetItem, QHeaderView,
                              QTabWidget, QDialog, QDialogButtonBox, QInputDialog,
                              QListWidget, QListWidgetItem, QAbstractItemView, QSizePolicy)
 
+# Tentative d'import de reportlab pour les PDF
 try:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -43,13 +44,56 @@ except ImportError:
 
 APP_NAME = "SATER  Map"
 APP_VERSION = "2.0.0"
-ICON_PATH = "./img/logo.jpg"
+
+# Déterminer le répertoire de base de l'application
+# Fonctionne avec PyInstaller (--onefile et --onedir) et en développement
+def get_app_dir():
+    """Retourne le répertoire de l'application (compatible PyInstaller)"""
+    if getattr(sys, 'frozen', False):
+        # Application compilée avec PyInstaller
+        # sys.executable pointe vers l'exe
+        return os.path.dirname(sys.executable)
+    else:
+        # Mode développement
+        return os.path.dirname(os.path.abspath(__file__))
+
+def get_user_data_dir():
+    """Retourne le répertoire des données utilisateur (pour les fichiers modifiables)"""
+    if sys.platform == 'win32':
+        # Windows: utiliser AppData/Local
+        base = os.environ.get('LOCALAPPDATA', os.path.expanduser('~'))
+        user_dir = os.path.join(base, 'SATER_Map')
+    elif sys.platform == 'darwin':
+        # macOS: utiliser ~/Library/Application Support
+        user_dir = os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'SATER_Map')
+    else:
+        # Linux: utiliser ~/.config ou ~/.local/share
+        base = os.environ.get('XDG_CONFIG_HOME', os.path.join(os.path.expanduser('~'), '.config'))
+        user_dir = os.path.join(base, 'SATER_Map')
+    
+    # Créer le répertoire s'il n'existe pas
+    try:
+        os.makedirs(user_dir, exist_ok=True)
+    except:
+        # Fallback vers le répertoire de l'application
+        user_dir = get_app_dir()
+    
+    return user_dir
+
+APP_DIR = get_app_dir()
+USER_DATA_DIR = get_user_data_dir()
+ICON_PATH = os.path.join(APP_DIR, "img", "logo.jpg")
 AZIMUTH_LENGTH_KM = 100
-TILES_DIR = "./tiles"
-PRESETS_FILE = "./station_presets.json"
+TILES_DIR = os.path.join(APP_DIR, "tiles")
+# Les presets sont stockés dans le dossier utilisateur (accessible en écriture)
+PRESETS_FILE = os.path.join(USER_DATA_DIR, "station_presets.json")
+
 STATION_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#9b59b6", 
                   "#f39c12", "#1abc9c", "#e91e63", "#795548"]
+
+# Niveaux de signal S-mètre
 SIGNAL_LEVELS = ["S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S9+10", "S9+20", "S9+30"]
+
 TILE_PROVIDERS = {
     'osm': {
         'name': 'OpenStreetMap',
@@ -164,15 +208,22 @@ def load_presets(filepath: str = PRESETS_FILE) -> List[StationPreset]:
             with open(filepath, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 return [StationPreset.from_dict(p) for p in data]
-        except:
-            pass
+        except Exception as e:
+            print(f"Erreur lors du chargement des présets: {e}")
     return []
 
 
-def save_presets(presets: List[StationPreset], filepath: str = PRESETS_FILE):
-    """Sauvegarde les présets dans un fichier JSON"""
-    with open(filepath, 'w', encoding='utf-8') as f:
-        json.dump([p.to_dict() for p in presets], f, indent=2, ensure_ascii=False)
+def save_presets(presets: List[StationPreset], filepath: str = PRESETS_FILE) -> bool:
+    """Sauvegarde les présets dans un fichier JSON. Retourne True si succès."""
+    try:
+        # S'assurer que le répertoire existe
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump([p.to_dict() for p in presets], f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la sauvegarde des présets: {e}")
+        return False
 
 
 def dms_to_dd(deg: int, minutes: int, seconds: float, direction: str) -> float:
@@ -461,14 +512,31 @@ class TileDownloader(QObject):
         self.tiles_dir = tiles_dir
         self.provider_key = provider_key
         self.cancelled = False
+        self.last_error = None
     
     def cancel(self):
         self.cancelled = True
     
     def download(self):
+        import ssl
+        
         downloaded = 0
         failed = 0
         total = len(self.tiles)
+        
+        # Créer un contexte SSL qui ne vérifie pas les certificats (fallback)
+        # Nécessaire pour les builds PyInstaller où les certificats peuvent manquer
+        ssl_context = None
+        try:
+            ssl_context = ssl.create_default_context()
+        except:
+            try:
+                # Fallback: contexte SSL sans vérification (moins sécurisé mais fonctionnel)
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+            except:
+                ssl_context = None
         
         for i, (z, x, y) in enumerate(self.tiles):
             if self.cancelled:
@@ -481,19 +549,52 @@ class TileDownloader(QObject):
                 self.progress.emit(i + 1, total, f"{self.provider_key}/{z}/{x}/{y} (cache)")
                 continue
             
-            os.makedirs(os.path.dirname(tile_path), exist_ok=True)
+            try:
+                os.makedirs(os.path.dirname(tile_path), exist_ok=True)
+            except Exception as e:
+                self.last_error = f"Impossible de créer le dossier: {e}"
+                failed += 1
+                self.progress.emit(i + 1, total, f"{self.provider_key}/{z}/{x}/{y} ERREUR (dossier)")
+                continue
+            
             url = get_tile_url(self.provider_key, z, x, y, i)
             
             try:
                 req = urllib.request.Request(url, headers={
                     'User-Agent': 'SATER_Map/2.0 (Amateur Radio Emergency Service)'
                 })
-                with urllib.request.urlopen(req, timeout=15) as response:
-                    with open(tile_path, 'wb') as f:
-                        f.write(response.read())
+                
+                # Essayer avec le contexte SSL
+                if ssl_context:
+                    with urllib.request.urlopen(req, timeout=15, context=ssl_context) as response:
+                        with open(tile_path, 'wb') as f:
+                            f.write(response.read())
+                else:
+                    with urllib.request.urlopen(req, timeout=15) as response:
+                        with open(tile_path, 'wb') as f:
+                            f.write(response.read())
+                            
                 downloaded += 1
                 self.progress.emit(i + 1, total, f"{self.provider_key}/{z}/{x}/{y} OK")
+                
+            except ssl.SSLError as e:
+                # Erreur SSL - réessayer sans vérification
+                try:
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
+                    with urllib.request.urlopen(req, timeout=15, context=ctx) as response:
+                        with open(tile_path, 'wb') as f:
+                            f.write(response.read())
+                    downloaded += 1
+                    self.progress.emit(i + 1, total, f"{self.provider_key}/{z}/{x}/{y} OK (no-ssl)")
+                except Exception as e2:
+                    self.last_error = str(e2)
+                    failed += 1
+                    self.progress.emit(i + 1, total, f"{self.provider_key}/{z}/{x}/{y} ERREUR SSL")
+                    
             except Exception as e:
+                self.last_error = str(e)
                 failed += 1
                 self.progress.emit(i + 1, total, f"{self.provider_key}/{z}/{x}/{y} ERREUR")
         
@@ -504,7 +605,7 @@ class HistoryDialog(QDialog):
     def __init__(self, history: List[AzimuthRecord], parent=None):
         super().__init__(parent)
         self.setWindowTitle("Historique des relevés")
-        self.setMinimumSize(650, 500)
+        self.setMinimumSize(630, 500)
         
         layout = QVBoxLayout(self)
         
@@ -996,7 +1097,7 @@ def generate_pdf_report(filename: str, mission_data: dict, img_dir: str = "./img
             elements.append(Paragraph(comment_text, comment_style))
             elements.append(Spacer(1, 15))
         
-        # Information mission
+        # Informations mission
         elements.append(Paragraph("📋 Informations de la mission", section_style))
         
         mission_info = [
@@ -1687,6 +1788,12 @@ class MainWindow(QMainWindow):
         self.beacon_position: Optional[Tuple[float, float]] = None  # (lat, lon) de la balise
         self.last_intersection_center: Optional[Tuple[float, float]] = None  # Pour centrer sur la zone
         
+        # Créer le dossier tiles s'il n'existe pas
+        try:
+            os.makedirs(self.tiles_dir, exist_ok=True)
+        except Exception as e:
+            print(f"Avertissement: impossible de créer le dossier tiles: {e}")
+        
         # Position et zoom de la carte (centré sur la France au démarrage)
         self.map_center_lat = 46.6
         self.map_center_lon = 2.5
@@ -1740,8 +1847,26 @@ class MainWindow(QMainWindow):
 
     def _setup_ui(self):
         self.setWindowTitle(f"{APP_NAME} v{APP_VERSION}")
-        if os.path.exists(ICON_PATH):
-            self.setWindowIcon(QIcon(ICON_PATH))
+        
+        # Charger l'icône de la fenêtre (essayer .ico puis .jpg)
+        icon_loaded = False
+        icon_ico = os.path.join(APP_DIR, "img", "logo.ico")
+        icon_jpg = os.path.join(APP_DIR, "img", "logo.jpg")
+        
+        if os.path.exists(icon_ico):
+            self.setWindowIcon(QIcon(icon_ico))
+            icon_loaded = True
+        elif os.path.exists(icon_jpg):
+            self.setWindowIcon(QIcon(icon_jpg))
+            icon_loaded = True
+        
+        if not icon_loaded:
+            # Essayer les chemins relatifs (mode développement)
+            if os.path.exists("./_internal/img/logo.ico"):
+                self.setWindowIcon(QIcon("./_internal/img/logo.ico"))
+            elif os.path.exists("./img/logo.jpg"):
+                self.setWindowIcon(QIcon("./img/logo.jpg"))
+        
         self.setMinimumSize(1200, 700)
 
         central_widget = QWidget()
@@ -2067,7 +2192,14 @@ class MainWindow(QMainWindow):
         provider = TILE_PROVIDERS[self.current_provider]
         
         if self.offline_mode:
-            tile_url = f"file://{self.tiles_dir}/{self.current_provider}/{{z}}/{{x}}/{{y}}.png"
+            # Convertir le chemin pour le format file:// compatible avec tous les OS
+            # Windows: C:\path\tiles -> file:///C:/path/tiles
+            # Linux: /path/tiles -> file:///path/tiles
+            tiles_path = self.tiles_dir.replace('\\', '/')
+            if not tiles_path.startswith('/'):
+                # Windows: ajouter un / avant la lettre de lecteur
+                tiles_path = '/' + tiles_path
+            tile_url = f"file://{tiles_path}/{self.current_provider}/{{z}}/{{x}}/{{y}}.png"
             subdomains_js = ""
         else:
             tile_url = provider['url']
@@ -2697,8 +2829,10 @@ console.log('SATER Map v2.7 loaded');
             self._run_js("clearBeacon();")
         
         visible = [s for s in stations if s.visible]
-        if len(visible) >= 2 and self.show_intersection:
-            intersections = calculate_all_intersections(visible, self.azimuth_length_km)
+        # Pour le calcul d'intersection, exclure les stations S0 (pas d'azimut tracé)
+        stations_with_azimuth = [s for s in visible if s.signal != 'S0']
+        if len(stations_with_azimuth) >= 2 and self.show_intersection:
+            intersections = calculate_all_intersections(stations_with_azimuth, self.azimuth_length_km)
             
             if intersections:
                 circle_data = calculate_uncertainty_circle(intersections)
@@ -2790,7 +2924,20 @@ console.log('SATER Map v2.7 loaded');
             provider_dir = os.path.join(self.tiles_dir, self.current_provider)
             if not os.path.exists(provider_dir):
                 QMessageBox.warning(self, "Attention", 
-                    f"Aucune tuile locale pour '{TILE_PROVIDERS[self.current_provider]['name']}'.")
+                    f"Aucune tuile téléchargée pour '{TILE_PROVIDERS[self.current_provider]['name']}'.\n\n"
+                    f"Dossier attendu:\n{provider_dir}\n\n"
+                    "Utilisez 'Édition > Télécharger les tuiles visibles' pour télécharger les tuiles.")
+            else:
+                # Vérifier qu'il y a bien des fichiers
+                tile_count = 0
+                for root, dirs, files in os.walk(provider_dir):
+                    tile_count += len([f for f in files if f.endswith('.png')])
+                if tile_count == 0:
+                    QMessageBox.warning(self, "Attention", 
+                        f"Le dossier existe mais ne contient aucune tuile:\n{provider_dir}\n\n"
+                        "Utilisez 'Édition > Télécharger les tuiles visibles' pour télécharger les tuiles.")
+                else:
+                    self.status_bar.showMessage(f"Mode hors-ligne: {tile_count} tuiles disponibles pour {self.current_provider}")
         
         # Sauvegarder la position actuelle avant de recharger
         if self.map_ready:
@@ -3037,14 +3184,42 @@ console.log('SATER Map v2.7 loaded');
         if not tiles:
             return
         
+        # Vérifier et créer le dossier tiles
+        try:
+            os.makedirs(self.tiles_dir, exist_ok=True)
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", 
+                f"Impossible de créer le dossier tiles:\n{self.tiles_dir}\n\nErreur: {e}\n\n"
+                "Vérifiez les permissions d'écriture.")
+            return
+        
+        # Créer le sous-dossier du provider
+        provider_dir = os.path.join(self.tiles_dir, self.current_provider)
+        try:
+            os.makedirs(provider_dir, exist_ok=True)
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", 
+                f"Impossible de créer le dossier:\n{provider_dir}\n\nErreur: {e}")
+            return
+        
+        # Vérifier qu'on peut écrire dans le dossier
+        test_file = os.path.join(provider_dir, ".write_test")
+        try:
+            with open(test_file, 'w') as f:
+                f.write("test")
+            os.remove(test_file)
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", 
+                f"Impossible d'écrire dans le dossier:\n{provider_dir}\n\nErreur: {e}\n\n"
+                "Vérifiez les permissions d'écriture.")
+            return
+        
         reply = QMessageBox.question(self, "Télécharger les tuiles",
-            f"Fond: {provider['name']}\nTuiles: {len(tiles)}\nZoom: {min_zoom}-{max_zoom}\n\nContinuer ?",
+            f"Fond: {provider['name']}\nDossier: {provider_dir}\nTuiles: {len(tiles)}\nZoom: {min_zoom}-{max_zoom}\n\nContinuer ?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if reply != QMessageBox.StandardButton.Yes:
             return
-        
-        os.makedirs(self.tiles_dir, exist_ok=True)
         
         progress = QProgressDialog("Téléchargement...", "Annuler", 0, len(tiles), self)
         progress.setWindowModality(Qt.WindowModality.WindowModal)
@@ -3059,7 +3234,10 @@ console.log('SATER Map v2.7 loaded');
         def on_finished(downloaded, failed):
             progress.close()
             self._update_tiles_info()
-            QMessageBox.information(self, "Terminé", f"Téléchargées: {downloaded}\nÉchouées: {failed}")
+            msg = f"Téléchargées: {downloaded}\nÉchouées: {failed}"
+            if failed > 0 and hasattr(self.downloader, 'last_error') and self.downloader.last_error:
+                msg += f"\n\nDernière erreur:\n{self.downloader.last_error}"
+            QMessageBox.information(self, "Terminé", msg)
         
         self.downloader.progress.connect(on_progress)
         self.downloader.finished.connect(on_finished)
@@ -3075,6 +3253,26 @@ console.log('SATER Map v2.7 loaded');
         stations = self.stations_table.get_all_stations()
         stations_data = [s.to_dict() for s in stations if s]
         
+        # Calculer la zone d'intersection
+        intersection_data = None
+        visible = [s for s in stations if s and s.visible]
+        stations_with_azimuth = [s for s in visible if s.signal != 'S0']
+        if len(stations_with_azimuth) >= 2:
+            intersections = calculate_all_intersections(stations_with_azimuth, self.azimuth_length_km)
+            if intersections:
+                circle_data = calculate_uncertainty_circle(intersections)
+                if circle_data:
+                    center_lat, center_lon, radius_km, surface_km2 = circle_data
+                    intersection_data = {
+                        'center_lat': center_lat,
+                        'center_lon': center_lon,
+                        'radius_km': radius_km,
+                        'points': intersections,
+                        'border_color': self.zone_border_color,
+                        'fill_color': self.zone_fill_color,
+                        'opacity': self.zone_opacity
+                    }
+        
         # Récupérer la vue actuelle de la carte
         def on_bounds(result):
             view_data = None
@@ -3084,7 +3282,7 @@ console.log('SATER Map v2.7 loaded');
                 except:
                     pass
             
-            html = self._standalone_html(stations_data, view_data)
+            html = self._standalone_html(stations_data, view_data, intersection_data)
             with open(fn, 'w', encoding='utf-8') as f:
                 f.write(html)
             self.status_bar.showMessage(f"Sauvegardé: {fn}")
@@ -3092,7 +3290,7 @@ console.log('SATER Map v2.7 loaded');
         if self.map_ready:
             self._run_js("getMapBounds()", on_bounds)
         else:
-            html = self._standalone_html(stations_data, None)
+            html = self._standalone_html(stations_data, None, intersection_data)
             with open(fn, 'w', encoding='utf-8') as f:
                 f.write(html)
             self.status_bar.showMessage(f"Sauvegardé: {fn}")
@@ -3113,7 +3311,7 @@ console.log('SATER Map v2.7 loaded');
         self.map_view.grab().save(fn, "PNG")
         self.status_bar.showMessage(f"PNG exporté: {fn}")
 
-    def _standalone_html(self, stations, view_data=None):
+    def _standalone_html(self, stations, view_data=None, intersection_data=None):
         mission_time = self.mission_timer.get_elapsed_str()
         start_time = self.mission_timer.get_start_time()
         start_str = start_time.strftime("%d/%m/%Y %H:%M") if start_time else "Non démarrée"
@@ -3122,6 +3320,20 @@ console.log('SATER Map v2.7 loaded');
         beacon_js = "null"
         if self.beacon_position:
             beacon_js = f"{{lat: {self.beacon_position[0]}, lon: {self.beacon_position[1]}}}"
+        
+        # Préparer les données d'intersection
+        intersection_js = "null"
+        if intersection_data:
+            points_json = json.dumps(intersection_data['points'])
+            intersection_js = f"""{{
+                centerLat: {intersection_data['center_lat']},
+                centerLon: {intersection_data['center_lon']},
+                radiusKm: {intersection_data['radius_km']},
+                points: {points_json},
+                borderColor: '{intersection_data['border_color']}',
+                fillColor: '{intersection_data['fill_color']}',
+                opacity: {intersection_data['opacity']}
+            }}"""
         
         # Utiliser la vue actuelle ou les valeurs par défaut
         if view_data:
@@ -3178,11 +3390,13 @@ html,body,#map{{height:100%;margin:0}}
 <p><b>Mission:</b> {start_str}<br><b>Durée:</b> {mission_time}</p>
 <div id="list"></div>
 <p><b>Relevés:</b> {len(self.azimuth_history)}</p>
+<div id="intersection-info"></div>
 </div>
 <script>
 var stations={json.dumps(stations)};
 var len={self.azimuth_length_km};
 var beacon={beacon_js};
+var intersection={intersection_js};
 var map=L.map('map').setView([{center_lat}, {center_lon}], {zoom});
 L.tileLayer('{tile_url}', {{
     attribution: '{attribution}',
@@ -3215,17 +3429,54 @@ stations.forEach(function(s){{
         .bindPopup('<b>'+s.callsign+'</b><br>Signal: '+signalStr+'<br>Az: '+s.azimuth+'° ±'+s.uncertainty+'°')
         .addTo(map);
     
-    var e=calcEnd(s.lat,s.lon,s.azimuth,len);
-    L.polyline([[s.lat,s.lon],e],{{color:s.color,weight:3,dashArray:'10,5'}}).addTo(map);
-    
-    if(s.uncertainty>0){{
-        var eL=calcEnd(s.lat,s.lon,s.azimuth-s.uncertainty,len);
-        var eR=calcEnd(s.lat,s.lon,s.azimuth+s.uncertainty,len);
-        L.polygon([[s.lat,s.lon],eL,eR],{{color:s.color,fillColor:s.color,fillOpacity:0.15,weight:1}}).addTo(map);
+    // Ne tracer l'azimut que si le signal n'est pas S0
+    if(signalStr !== 'S0') {{
+        var e=calcEnd(s.lat,s.lon,s.azimuth,len);
+        L.polyline([[s.lat,s.lon],e],{{color:s.color,weight:3,dashArray:'10,5'}}).addTo(map);
+        
+        if(s.uncertainty>0){{
+            var eL=calcEnd(s.lat,s.lon,s.azimuth-s.uncertainty,len);
+            var eR=calcEnd(s.lat,s.lon,s.azimuth+s.uncertainty,len);
+            L.polygon([[s.lat,s.lon],eL,eR],{{color:s.color,fillColor:s.color,fillOpacity:0.15,weight:1}}).addTo(map);
+        }}
     }}
     
     html.push('<div><span style="color:'+s.color+'">●</span> '+s.callsign+' - '+s.azimuth+'° ±'+s.uncertainty+'° ('+signalStr+')</div>');
 }});
+
+// Ajouter la zone d'intersection si elle existe
+if(intersection) {{
+    // Cercle d'incertitude
+    L.circle([intersection.centerLat, intersection.centerLon], {{
+        radius: intersection.radiusKm * 1000,
+        color: intersection.borderColor,
+        fillColor: intersection.fillColor,
+        fillOpacity: intersection.opacity,
+        weight: 2
+    }}).addTo(map);
+    
+    // Points d'intersection
+    intersection.points.forEach(function(p) {{
+        L.circleMarker([p[0], p[1]], {{
+            radius: 5,
+            color: intersection.borderColor,
+            fillColor: intersection.borderColor,
+            fillOpacity: 1,
+            weight: 2
+        }}).addTo(map);
+    }});
+    
+    // Marqueur au centre
+    L.circleMarker([intersection.centerLat, intersection.centerLon], {{
+        radius: 8,
+        color: '#000',
+        fillColor: intersection.fillColor,
+        fillOpacity: 1,
+        weight: 2
+    }}).bindPopup('<b>Centre zone</b><br>'+intersection.centerLat.toFixed(6)+', '+intersection.centerLon.toFixed(6)+'<br>Rayon: '+intersection.radiusKm.toFixed(2)+' km').addTo(map);
+    
+    document.getElementById('intersection-info').innerHTML = '<p><b>Zone:</b> '+intersection.centerLat.toFixed(4)+', '+intersection.centerLon.toFixed(4)+'<br>Rayon: '+intersection.radiusKm.toFixed(2)+' km</p>';
+}}
 
 // Ajouter la balise si elle existe
 if(beacon) {{
@@ -3247,13 +3498,194 @@ document.getElementById('list').innerHTML=html.join('');
         fn, _ = QFileDialog.getSaveFileName(self, "Export KML", "sater.kml", "KML (*.kml)")
         if not fn: return
         stations = self.stations_table.get_all_stations()
-        kml = '<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><n>SATER</n>\n'
+        
+        # Fonction pour convertir couleur hex en KML (format aabbggrr)
+        def hex_to_kml_color(hex_color, alpha='ff'):
+            hex_color = hex_color.lstrip('#')
+            r, g, b = hex_color[0:2], hex_color[2:4], hex_color[4:6]
+            return f"{alpha}{b}{g}{r}"
+        
+        kml = '''<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+<Document>
+<name>SATER - Mission de recherche</name>
+<description>Export SATER Map</description>
+
+<!-- Styles pour les stations -->
+<Style id="stationStyle">
+    <IconStyle>
+        <color>ff0000ff</color>
+        <scale>1.0</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/red-circle.png</href></Icon>
+    </IconStyle>
+    <LabelStyle>
+        <scale>0.8</scale>
+    </LabelStyle>
+</Style>
+
+<!-- Style pour la balise -->
+<Style id="beaconStyle">
+    <IconStyle>
+        <color>ff0000ff</color>
+        <scale>1.5</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/target.png</href></Icon>
+    </IconStyle>
+    <LabelStyle>
+        <color>ff0000ff</color>
+        <scale>1.0</scale>
+    </LabelStyle>
+</Style>
+
+<!-- Style pour les azimuts -->
+<Style id="azimuthStyle">
+    <LineStyle>
+        <color>ff0000ff</color>
+        <width>2</width>
+    </LineStyle>
+    <PolyStyle>
+        <color>400000ff</color>
+    </PolyStyle>
+</Style>
+
+'''
+        
+        # Dossier pour les stations
+        kml += '<Folder>\n<name>Stations</name>\n'
+        
         for s in stations:
-            end_lat, end_lon = calc_endpoint_haversine(s.lat, s.lon, s.azimuth, self.azimuth_length_km)
-            kml += f'<Placemark><n>{s.callsign}</n><Point><coordinates>{s.lon},{s.lat},0</coordinates></Point></Placemark>\n'
-            kml += f'<Placemark><n>{s.callsign} Az {s.azimuth}° ±{s.uncertainty}°</n><LineString><coordinates>{s.lon},{s.lat},0 {end_lon},{end_lat},0</coordinates></LineString></Placemark>\n'
-        kml += '</Document></kml>'
-        with open(fn, 'w') as f: f.write(kml)
+            if not s.visible:
+                continue
+            
+            station_color = hex_to_kml_color(s.color)
+            signal_str = s.signal if s.signal else 'S5'
+            
+            # Placemark pour la station (avec indicatif comme nom)
+            kml += f'''<Placemark>
+<name>{s.callsign}</name>
+<description>Signal: {signal_str}
+Azimut: {s.azimuth}° ±{s.uncertainty}°
+Position: {s.lat:.6f}, {s.lon:.6f}</description>
+<Style>
+    <IconStyle>
+        <color>{station_color}</color>
+        <scale>1.0</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/paddle/wht-circle.png</href></Icon>
+    </IconStyle>
+    <LabelStyle>
+        <color>{station_color}</color>
+        <scale>0.8</scale>
+    </LabelStyle>
+</Style>
+<Point><coordinates>{s.lon},{s.lat},0</coordinates></Point>
+</Placemark>
+'''
+            
+            # Azimut seulement si signal != S0
+            if signal_str != 'S0':
+                end_lat, end_lon = calc_endpoint_haversine(s.lat, s.lon, s.azimuth, self.azimuth_length_km)
+                
+                # Ligne d'azimut
+                kml += f'''<Placemark>
+<name>{s.callsign} - Azimut {s.azimuth}°</name>
+<description>Azimut: {s.azimuth}° ±{s.uncertainty}°</description>
+<Style>
+    <LineStyle>
+        <color>{station_color}</color>
+        <width>2</width>
+    </LineStyle>
+</Style>
+<LineString>
+<tessellate>1</tessellate>
+<coordinates>{s.lon},{s.lat},0 {end_lon},{end_lat},0</coordinates>
+</LineString>
+</Placemark>
+'''
+                
+                # Cône d'incertitude si > 0
+                if s.uncertainty > 0:
+                    end_left = calc_endpoint_haversine(s.lat, s.lon, s.azimuth - s.uncertainty, self.azimuth_length_km)
+                    end_right = calc_endpoint_haversine(s.lat, s.lon, s.azimuth + s.uncertainty, self.azimuth_length_km)
+                    
+                    kml += f'''<Placemark>
+<name>{s.callsign} - Incertitude</name>
+<Style>
+    <LineStyle>
+        <color>{hex_to_kml_color(s.color, '80')}</color>
+        <width>1</width>
+    </LineStyle>
+    <PolyStyle>
+        <color>{hex_to_kml_color(s.color, '40')}</color>
+    </PolyStyle>
+</Style>
+<Polygon>
+<tessellate>1</tessellate>
+<outerBoundaryIs><LinearRing>
+<coordinates>{s.lon},{s.lat},0 {end_left[1]},{end_left[0]},0 {end_right[1]},{end_right[0]},0 {s.lon},{s.lat},0</coordinates>
+</LinearRing></outerBoundaryIs>
+</Polygon>
+</Placemark>
+'''
+        
+        kml += '</Folder>\n'
+        
+        # Ajouter la balise si elle existe
+        if self.beacon_position:
+            beacon_lat, beacon_lon = self.beacon_position
+            kml += f'''<Folder>
+<name>Balise de détresse</name>
+<Placemark>
+<name>🎯 BALISE</name>
+<description>Position estimée de la balise de détresse
+Coordonnées: {beacon_lat:.6f}, {beacon_lon:.6f}</description>
+<Style>
+    <IconStyle>
+        <color>ff0000ff</color>
+        <scale>1.5</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/target.png</href></Icon>
+    </IconStyle>
+    <LabelStyle>
+        <color>ff0000ff</color>
+        <scale>1.2</scale>
+    </LabelStyle>
+</Style>
+<Point><coordinates>{beacon_lon},{beacon_lat},0</coordinates></Point>
+</Placemark>
+</Folder>
+'''
+        
+        # Ajouter la zone d'intersection si elle existe
+        visible = [s for s in stations if s.visible]
+        stations_with_azimuth = [s for s in visible if s.signal != 'S0']
+        if len(stations_with_azimuth) >= 2:
+            intersections = calculate_all_intersections(stations_with_azimuth, self.azimuth_length_km)
+            if intersections:
+                circle_data = calculate_uncertainty_circle(intersections)
+                if circle_data:
+                    center_lat, center_lon, radius_km, _ = circle_data
+                    zone_color = hex_to_kml_color(self.zone_border_color)
+                    fill_color = hex_to_kml_color(self.zone_fill_color, '60')
+                    
+                    kml += f'''<Folder>
+<name>Zone d'intersection</name>
+<Placemark>
+<name>Centre de la zone</name>
+<description>Rayon: {radius_km:.2f} km</description>
+<Style>
+    <IconStyle>
+        <color>{zone_color}</color>
+        <scale>1.2</scale>
+        <Icon><href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href></Icon>
+    </IconStyle>
+</Style>
+<Point><coordinates>{center_lon},{center_lat},0</coordinates></Point>
+</Placemark>
+</Folder>
+'''
+        
+        kml += '</Document>\n</kml>'
+        
+        with open(fn, 'w', encoding='utf-8') as f: 
+            f.write(kml)
         self.status_bar.showMessage(f"KML: {fn}")
 
     def export_json(self):
@@ -3419,8 +3851,10 @@ document.getElementById('list').innerHTML=html.join('');
         
         # Ajouter les infos d'intersection si disponibles
         visible = [s for s in stations if s.visible]
-        if len(visible) >= 2:
-            intersections = calculate_all_intersections(visible, self.azimuth_length_km)
+        # Exclure les stations S0 (pas d'azimut) du calcul d'intersection
+        stations_with_azimuth = [s for s in visible if s.signal != 'S0']
+        if len(stations_with_azimuth) >= 2:
+            intersections = calculate_all_intersections(stations_with_azimuth, self.azimuth_length_km)
             if intersections:
                 circle_data = calculate_uncertainty_circle(intersections)
                 if circle_data:
@@ -3434,9 +3868,10 @@ document.getElementById('list').innerHTML=html.join('');
                         'point_count': len(intersections)
                     }
         
-        # Déterminer le chemin des images
-        img_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "img")
+        # Déterminer le chemin des images (compatible PyInstaller)
+        img_dir = os.path.join(APP_DIR, "img")
         if not os.path.exists(img_dir):
+            # Fallback vers le répertoire courant
             img_dir = "./img"
         
         if generate_pdf_report(fn, mission_data, img_dir):
@@ -3451,7 +3886,11 @@ document.getElementById('list').innerHTML=html.join('');
         dialog = PresetManagerDialog(presets, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             # Sauvegarder les présets modifiés
-            save_presets(dialog.get_presets())
+            if not save_presets(dialog.get_presets()):
+                QMessageBox.warning(self, "Erreur", 
+                    f"Impossible de sauvegarder les présets.\n\n"
+                    f"Fichier: {PRESETS_FILE}\n\n"
+                    "Vérifiez les permissions d'écriture.")
             
             # Charger les présets sélectionnés
             selected = dialog.get_selected_presets()
@@ -3473,7 +3912,9 @@ document.getElementById('list').innerHTML=html.join('');
             selected = dialog.get_selected_presets()
             if selected:
                 self._load_presets_to_stations(selected)
-                save_presets(dialog.get_presets())
+                if not save_presets(dialog.get_presets()):
+                    QMessageBox.warning(self, "Erreur", 
+                        "Impossible de sauvegarder les modifications des présets.")
 
     def _load_presets_to_stations(self, presets: List[StationPreset]):
         """Charge les présets sélectionnés comme stations"""
@@ -3544,10 +3985,15 @@ document.getElementById('list').innerHTML=html.join('');
         
         presets = load_presets()
         presets.append(preset)
-        save_presets(presets)
-        
-        QMessageBox.information(self, "Préset sauvegardé", 
-            f"Préset '{name}' sauvegardé avec succès!")
+        if save_presets(presets):
+            QMessageBox.information(self, "Préset sauvegardé", 
+                f"Préset '{name}' sauvegardé avec succès!\n\n"
+                f"Fichier: {PRESETS_FILE}")
+        else:
+            QMessageBox.warning(self, "Erreur", 
+                f"Impossible de sauvegarder le préset.\n\n"
+                f"Fichier: {PRESETS_FILE}\n\n"
+                "Vérifiez les permissions d'écriture.")
 
 
 def main():
