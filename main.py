@@ -6,31 +6,30 @@ SATER  Map - Version 2.0
 
 import json
 import os
+import shutil
 import sys
 import tempfile
-import shutil
 import threading
 import urllib.request
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
-from math import cos, degrees, radians, sin, tan, atan2, sqrt, pi, asin, floor, log
+from math import cos, degrees, radians, sin, tan, atan2, sqrt, pi, asin, log
 from typing import Optional, List, Tuple, Dict
 
-from PyQt6.QtCore import QObject, Qt, QTimer, QUrl, pyqtSignal, QTime
-from PyQt6.QtGui import QAction, QIcon, QColor, QFont
-from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtCore import QObject, Qt, QTimer, QUrl, pyqtSignal
+from PyQt6.QtGui import QAction, QIcon, QColor
 from PyQt6.QtWebEngineCore import QWebEngineSettings
+from PyQt6.QtWebEngineWidgets import QWebEngineView
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QColorDialog, QComboBox,
                              QDoubleSpinBox, QFileDialog, QGroupBox,
                              QHBoxLayout, QLabel, QLineEdit, QMainWindow,
                              QMessageBox, QPushButton, QSlider, QSpinBox, QStyle,
                              QVBoxLayout, QWidget, QStatusBar, QFormLayout,
-                             QTextEdit, QSplitter, QScrollArea, QProgressDialog,
+                             QTextEdit, QSplitter, QProgressDialog,
                              QLCDNumber, QTableWidget, QTableWidgetItem, QHeaderView,
                              QTabWidget, QDialog, QDialogButtonBox, QInputDialog,
                              QListWidget, QListWidgetItem, QAbstractItemView, QSizePolicy)
 
-# Tentative d'import de reportlab pour les PDF
 try:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
@@ -48,13 +47,9 @@ ICON_PATH = "./img/logo.jpg"
 AZIMUTH_LENGTH_KM = 100
 TILES_DIR = "./tiles"
 PRESETS_FILE = "./station_presets.json"
-
 STATION_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#9b59b6", 
                   "#f39c12", "#1abc9c", "#e91e63", "#795548"]
-
-# Niveaux de signal S-mètre
 SIGNAL_LEVELS = ["S0", "S1", "S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9", "S9+10", "S9+20", "S9+30"]
-
 TILE_PROVIDERS = {
     'osm': {
         'name': 'OpenStreetMap',
@@ -509,7 +504,7 @@ class HistoryDialog(QDialog):
     def __init__(self, history: List[AzimuthRecord], parent=None):
         super().__init__(parent)
         self.setWindowTitle("Historique des relevés")
-        self.setMinimumSize(900, 500)
+        self.setMinimumSize(650, 500)
         
         layout = QVBoxLayout(self)
         
@@ -1001,7 +996,7 @@ def generate_pdf_report(filename: str, mission_data: dict, img_dir: str = "./img
             elements.append(Paragraph(comment_text, comment_style))
             elements.append(Spacer(1, 15))
         
-        # Informations mission
+        # Information mission
         elements.append(Paragraph("📋 Informations de la mission", section_style))
         
         mission_info = [
@@ -1389,6 +1384,7 @@ class StationsTableWidget(QTableWidget):
         # Col 10: Azimut
         data.azimuth_spin = QSpinBox()
         data.azimuth_spin.setRange(0, 359)
+        data.azimuth_spin.setSuffix("°")
         data.azimuth_spin.valueChanged.connect(self._emit_change)
         self.setCellWidget(row, 10, data.azimuth_spin)
         
@@ -1398,6 +1394,7 @@ class StationsTableWidget(QTableWidget):
         data.uncertainty_spin.setDecimals(1)
         data.uncertainty_spin.setValue(5.0)
         data.uncertainty_spin.setPrefix("±")
+        data.uncertainty_spin.setSuffix("°")
         data.uncertainty_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         data.uncertainty_spin.valueChanged.connect(self._emit_change)
         self.setCellWidget(row, 11, data.uncertainty_spin)
@@ -3555,7 +3552,7 @@ document.getElementById('list').innerHTML=html.join('');
 
 def main():
     app = QApplication(sys.argv)
-    # app.setStyle("Fusion")
+    app.setStyle("Fusion")
     win = MainWindow()
     win.show()
     sys.exit(app.exec())
