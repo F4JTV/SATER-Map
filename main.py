@@ -132,6 +132,13 @@ class Station:
     visible: bool = True
     signal: str = "S5"
     notes: str = ""
+    station_id: str = ""  # Identifiant unique technique
+    
+    def __post_init__(self):
+        # Générer un ID unique si non fourni
+        if not self.station_id:
+            import uuid
+            self.station_id = str(uuid.uuid4())[:8]
     
     def to_dict(self) -> dict:
         return asdict(self)
@@ -1228,6 +1235,7 @@ def generate_pdf_report(filename: str, mission_data: dict, img_dir: str = "./img
 class StationRowData:
     """Stocke les widgets d'une ligne de station dans le tableau"""
     def __init__(self):
+        self.station_id = None  # Identifiant unique technique
         self.callsign_edit = None
         self.lat_deg = None
         self.lat_min = None
@@ -1302,6 +1310,8 @@ class StationsTableWidget(QTableWidget):
         
     def add_station(self, color: str = None) -> int:
         """Ajoute une nouvelle station et retourne l'index de la ligne"""
+        import uuid
+        
         if color is None:
             color = STATION_COLORS[len(self.station_rows) % len(STATION_COLORS)]
         
@@ -1311,6 +1321,7 @@ class StationsTableWidget(QTableWidget):
         
         data = StationRowData()
         data._color = color
+        data.station_id = str(uuid.uuid4())[:8]  # Générer un ID unique
         
         # Col 0: Indicatif
         data.callsign_edit = QLineEdit()
@@ -1480,7 +1491,8 @@ class StationsTableWidget(QTableWidget):
                 uncertainty=data.uncertainty_spin.value(),
                 color=data._color,
                 visible=data.visible_check.isChecked(),
-                signal=data.signal_combo.currentText()
+                signal=data.signal_combo.currentText(),
+                station_id=data.station_id  # Inclure l'ID unique
             )
         except:
             return None
@@ -1500,6 +1512,10 @@ class StationsTableWidget(QTableWidget):
             return
         data = self.station_rows[row]
         data._updating = True
+        
+        # Conserver le station_id si fourni dans l'objet Station
+        if hasattr(station, 'station_id') and station.station_id:
+            data.station_id = station.station_id
         
         data.callsign_edit.setText(station.callsign)
         lat_dms = dd_to_dms(station.lat, "lat")
@@ -1557,6 +1573,13 @@ class StationsTableWidget(QTableWidget):
         """Trouve l'index d'une station par son indicatif"""
         for i, data in enumerate(self.station_rows):
             if data.callsign_edit.text().strip() == callsign:
+                return i
+        return -1
+    
+    def get_row_by_station_id(self, station_id: str) -> int:
+        """Trouve l'index d'une station par son ID technique unique"""
+        for i, data in enumerate(self.station_rows):
+            if data.station_id == station_id:
                 return i
         return -1
 
@@ -2190,6 +2213,7 @@ function calcEndpoint(lat, lon, azimuth, distKm) {{
 function updateStations(stationsJson) {{
     var stations = JSON.parse(stationsJson);
     
+    // Nettoyage complet de tous les objets Leaflet existants
     for (var key in stationMarkers) {{
         if (stationMarkers.hasOwnProperty(key)) {{
             map.removeLayer(stationMarkers[key]);
@@ -2205,6 +2229,7 @@ function updateStations(stationsJson) {{
             map.removeLayer(azimuthCones[key]);
         }}
     }}
+    // Réinitialisation des dictionnaires
     stationMarkers = {{}};
     azimuthLines = {{}};
     azimuthCones = {{}};
@@ -2212,6 +2237,9 @@ function updateStations(stationsJson) {{
     for (var i = 0; i < stations.length; i++) {{
         var s = stations[i];
         if (!s.visible) continue;
+        
+        // Utiliser station_id comme clé unique (jamais callsign)
+        var stationId = s.station_id || ('station_' + i);
         
         var icon = L.divIcon({{
             className: 'station-marker',
@@ -2233,6 +2261,8 @@ function updateStations(stationsJson) {{
             '<div class="popup-coords"><b>Azimut:</b> ' + s.azimuth + '° ±' + s.uncertainty + '°</div>';
         marker.bindPopup(popupContent);
         
+        // Stocker l'ID technique et les propriétés sur le marker
+        marker._stationId = stationId;
         marker._callsign = s.callsign;
         marker._azimuth = s.azimuth;
         marker._uncertainty = s.uncertainty;
@@ -2241,33 +2271,36 @@ function updateStations(stationsJson) {{
         
         marker.on('drag', function(e) {{
             var pos = e.target.getLatLng();
-            var cs = e.target._callsign;
+            var sid = e.target._stationId;
             var az = e.target._azimuth;
             var unc = e.target._uncertainty;
             
-            if (azimuthLines[cs]) {{
+            // Mettre à jour la ligne d'azimut pendant le drag
+            if (azimuthLines[sid]) {{
                 var endPoint = calcEndpoint(pos.lat, pos.lng, az, azimuthLength);
-                azimuthLines[cs].setLatLngs([[pos.lat, pos.lng], endPoint]);
+                azimuthLines[sid].setLatLngs([[pos.lat, pos.lng], endPoint]);
             }}
-            if (azimuthCones[cs]) {{
+            // Mettre à jour le cône d'incertitude pendant le drag
+            if (azimuthCones[sid]) {{
                 var endLeft = calcEndpoint(pos.lat, pos.lng, az - unc, azimuthLength);
                 var endRight = calcEndpoint(pos.lat, pos.lng, az + unc, azimuthLength);
-                azimuthCones[cs].setLatLngs([[pos.lat, pos.lng], endLeft, endRight]);
+                azimuthCones[sid].setLatLngs([[pos.lat, pos.lng], endLeft, endRight]);
             }}
         }});
         
         marker.on('dragend', function(e) {{
             var pos = e.target.getLatLng();
-            var cs = e.target._callsign;
+            var sid = e.target._stationId;
+            // Retourner station_id pour identification côté Python
             window.lastDraggedStation = {{
-                callsign: cs,
+                station_id: sid,
                 lat: pos.lat,
                 lon: pos.lng
             }};
         }});
         
         marker.addTo(map);
-        stationMarkers[s.callsign] = marker;
+        stationMarkers[stationId] = marker;
         
         // Ne pas tracer l'azimut si signal S0 (station présente mais pas de réception)
         var signalLevel = s.signal || 'S5';
@@ -2280,7 +2313,7 @@ function updateStations(stationsJson) {{
                 dashArray: '10, 5'
             }});
             line.addTo(map);
-            azimuthLines[s.callsign] = line;
+            azimuthLines[stationId] = line;
             
             if (s.uncertainty > 0) {{
                 var endLeft = calcEndpoint(s.lat, s.lon, s.azimuth - s.uncertainty, azimuthLength);
@@ -2293,7 +2326,7 @@ function updateStations(stationsJson) {{
                     opacity: 0.5
                 }});
                 cone.addTo(map);
-                azimuthCones[s.callsign] = cone;
+                azimuthCones[stationId] = cone;
             }}
         }}
     }}
@@ -2626,9 +2659,12 @@ console.log('SATER Map v2.7 loaded');
             if result:
                 try:
                     data = json.loads(result)
-                    row = self.stations_table.get_row_by_callsign(data['callsign'])
-                    if row >= 0:
-                        self.stations_table.set_coordinates(row, data['lat'], data['lon'])
+                    # Utiliser station_id pour identifier la station (pas callsign)
+                    station_id = data.get('station_id')
+                    if station_id:
+                        row = self.stations_table.get_row_by_station_id(station_id)
+                        if row >= 0:
+                            self.stations_table.set_coordinates(row, data['lat'], data['lon'])
                 except:
                     pass
         
