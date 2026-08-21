@@ -23,7 +23,14 @@ Application de radiogoniométrie pour les opérations SATER (Sauvetage Aéro-Ter
 - Python 3.8 ou supérieur
 - Connexion Internet (pour les fonds de carte en ligne)
 
+### Linux / macOS
 ```bash
+pip install -r requirements.txt
+python main.py
+```
+
+### Windows
+```powershell
 pip install -r requirements.txt
 python main.py
 ```
@@ -34,6 +41,8 @@ Voir `BUILD_WINDOWS.md` pour les instructions détaillées.
 
 **Méthode rapide :**
 ```powershell
+# Double-cliquer sur build_windows.bat
+# ou exécuter :
 .\build_windows.bat
 ```
 
@@ -77,6 +86,21 @@ SATER_Map/
 2. Menu "Édition" → "Télécharger les tuiles visibles"
 3. Cocher "Mode hors-ligne" dans les paramètres
 
+## Nouveautés v2.0.0
+
+- Nouvelle gestion de la balise de détresse (positionnement manuel/automatique)
+- Enregistrement manuel des relevés (bouton 📝)
+- Rapport PDF amélioré avec capture de carte
+- Conservation de la vue lors du changement de fond de carte
+- Carte centrée sur la France au démarrage
+- Horodatage complet (date + heure) dans l'historique
+- Export HTML avec fond de carte actuel
+- Animation pulsante de la balise
+
 ## Licence
 
 Développé pour les ADRASEC - Licence libre
+
+## Contact
+
+ADRASEC - Association Départementale des Radioamateurs au Service de la Sécurité Civile

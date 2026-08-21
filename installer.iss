@@ -1,16 +1,26 @@
 ; SATER Map - Script d'installation Inno Setup
 ; Version 2.0.0
+; Éditeur: F4JTV
 
 #define MyAppName "SATER Map"
 #define MyAppVersion "2.0.0"
-#define MyAppPublisher "ADRASEC"
+#define MyAppPublisher "F4JTV"
 #define MyAppExeName "SATER_Map.exe"
+#define MyAppCopyright "© 2024-2025 F4JTV - ADRASEC"
 
 [Setup]
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+AppCopyright={#MyAppCopyright}
+VersionInfoVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=SATER Map - Outil de radiogoniométrie pour missions SATER
+VersionInfoCopyright={#MyAppCopyright}
+VersionInfoProductName={#MyAppName}
+VersionInfoProductVersion={#MyAppVersion}
 DefaultDirName={autopf}\SATER_Map
 DefaultGroupName={#MyAppName}
 OutputBaseFilename=SATER_Map_v{#MyAppVersion}_Setup
@@ -22,12 +32,13 @@ PrivilegesRequired=admin
 DisableDirPage=no
 ; Architecture
 ArchitecturesInstallIn64BitMode=x64compatible
-; Icône de l'installateur (optionnel - décommenter si vous avez l'icône)
-SetupIconFile=dist\SATER_Map\_internal\img\logo.ico
+; Icône de l'installateur (utilise l'icône du dossier source)
+SetupIconFile=img\logo.ico
+UninstallDisplayIcon={app}\img\logo.ico
 ; Informations affichées
-AppContact=ADRASEC06
-AppSupportURL=https://www.adrasec06.fr/
-AppUpdatesURL=https://www.adrasec06.fr/
+AppContact=F4JTV
+AppSupportURL=https://github.com/F4JTV
+AppUpdatesURL=https://github.com/F4JTV
 ; Version Windows minimale (Windows 10)
 MinVersion=10.0
 

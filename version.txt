@@ -1,0 +1,48 @@
+# UTF-8
+#
+# Fichier de métadonnées de version pour PyInstaller
+# Usage: pyinstaller --version-file=version.txt ...
+#
+
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    # Version du fichier (2.0.0.0)
+    filevers=(2, 0, 0, 0),
+    # Version du produit (2.0.0.0)
+    prodvers=(2, 0, 0, 0),
+    # Masque de flags (0x3f = tous les flags sont valides)
+    mask=0x3f,
+    # Flags (0x0 = release, pas de debug)
+    flags=0x0,
+    # OS (0x40004 = Windows NT)
+    OS=0x40004,
+    # Type de fichier (0x1 = Application)
+    fileType=0x1,
+    # Sous-type (0x0 = non applicable)
+    subtype=0x0,
+    # Date (non utilisé, laissé à 0)
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          u'040C04B0',  # 040C = Français, 04B0 = Unicode
+          [
+            StringStruct(u'CompanyName', u'F4JTV'),
+            StringStruct(u'FileDescription', u'SATER Map - Outil de radiogoniométrie pour missions SATER'),
+            StringStruct(u'FileVersion', u'2.0.0.0'),
+            StringStruct(u'InternalName', u'SATER_Map'),
+            StringStruct(u'LegalCopyright', u'© 2024-2025 F4JTV - ADRASEC'),
+            StringStruct(u'OriginalFilename', u'SATER_Map.exe'),
+            StringStruct(u'ProductName', u'SATER Map'),
+            StringStruct(u'ProductVersion', u'2.0.0.0'),
+            StringStruct(u'Comments', u'Application de cartographie pour les missions de recherche SATER (Sauvetage Aéroterrestre). Développée pour les radioamateurs ADRASEC.'),
+            StringStruct(u'LegalTrademarks', u'ADRASEC - Association Départementale des Radioamateurs au Service de la Sécurité Civile'),
+          ]
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct(u'Translation', [1036, 1200])])  # 1036 = Français, 1200 = Unicode
+  ]
+)

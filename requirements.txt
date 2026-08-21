@@ -1,4 +1,10 @@
-PyQt6
-PyQt6-WebEngine
-reportlab
-Pillow
+# SATER Map v2.0.0 - Dépendances Python
+# Installation: pip install -r requirements.txt
+
+PyQt6>=6.4.0
+PyQt6-WebEngine>=6.4.0
+reportlab>=4.0.0
+Pillow>=10.0.0
+
+# Pour la compilation Windows (optionnel)
+# pyinstaller>=6.0.0

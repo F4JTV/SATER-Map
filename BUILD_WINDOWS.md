@@ -1,161 +1,108 @@
-# Compilation SATER Map pour Windows
+# SATER Map - Guide de compilation Windows
+
+**Éditeur:** F4JTV  
+**Version:** 2.0.0
 
 ## Prérequis
 
-1. **Python 3.10+** installé depuis [python.org](https://www.python.org/downloads/)
-   - Cocher "Add Python to PATH" lors de l'installation
+- Python 3.10+ (64-bit recommandé)
+- PyInstaller : `pip install pyinstaller`
+- Inno Setup 6 (pour créer l'installateur) : https://jrsoftware.org/isinfo.php
 
-2. **Ouvrir PowerShell** ou Command Prompt
+## Compilation rapide
 
-## Installation des dépendances
+Double-cliquez sur `build_windows.bat` pour compiler automatiquement l'application.
 
-```powershell
-# Installer les dépendances
-pip install -r requirements.txt
-pip install pyinstaller
+## Compilation manuelle
 
-# Vérifier que tout fonctionne
-python main.py
-```
-
-## Compilation avec PyInstaller
-
-### Méthode simple (un seul fichier .exe)
+### 1. Installer les dépendances
 
 ```powershell
-pyinstaller --onefile --windowed --name "SATER_Map" --icon=img/logo.ico main.py
+pip install pyinstaller PyQt6 PyQt6-WebEngine reportlab
 ```
 
-### Méthode recommandée (dossier avec dépendances)
+### 2. Compiler avec PyInstaller
 
 ```powershell
-pyinstaller --onedir --windowed --name "SATER_Map" --icon=img/logo.ico --add-data "img;img" main.py
+pyinstaller --name "SATER_Map" --windowed --onedir --icon "img\logo.ico" --version-file "version.txt" --add-data "img;img" --noconfirm main.py
 ```
 
-### Options expliquées :
-- `--onefile` : Crée un seul fichier .exe (plus lent au démarrage)
-- `--onedir` : Crée un dossier avec l'exe et les DLL (démarrage plus rapide)
-- `--windowed` : Pas de console noire au démarrage
-- `--icon` : Icône de l'application
-- `--add-data` : Inclut le dossier img/
+**Important:** Le fichier `version.txt` contient les métadonnées de version (éditeur F4JTV, description, copyright). Ces métadonnées permettent d'éviter le blocage par Windows SmartScreen.
 
-## Résultat
+### 3. Créer l'installateur (optionnel)
 
-L'exécutable se trouve dans :
-```
-dist/SATER_Map/SATER_Map.exe
-```
+Ouvrez `installer.iss` avec Inno Setup et compilez, ou en ligne de commande :
 
-## Fichier .spec avancé (optionnel)
-
-Pour plus de contrôle, créez `SATER_Map.spec` :
-
-```python
-# -*- mode: python ; coding: utf-8 -*-
-
-a = Analysis(
-    ['main.py'],
-    pathex=[],
-    binaries=[],
-    datas=[('img', 'img')],
-    hiddenimports=['PyQt6.QtWebEngineWidgets', 'PyQt6.QtWebEngineCore'],
-    hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
-    noarchive=False,
-)
-
-pyz = PYZ(a.pure)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name='SATER_Map',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon='img/logo.ico',
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='SATER_Map',
-)
-```
-
-Puis compiler avec :
 ```powershell
-pyinstaller SATER_Map.spec
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ```
+
+L'installateur sera créé dans le dossier `Output\`.
+
+## Structure des fichiers
+
+```
+SATER_Map/
+├── main.py              # Code source principal
+├── version.txt          # Métadonnées de version (F4JTV)
+├── installer.iss        # Script Inno Setup
+├── build_windows.bat    # Script de compilation automatique
+├── img/
+│   ├── logo.jpg         # Logo de l'application
+│   └── logo.ico         # Icône Windows (multi-résolution)
+└── dist/
+    └── SATER_Map/       # Application compilée
+        ├── SATER_Map.exe
+        ├── img/
+        └── ...
+```
+
+## Métadonnées de version
+
+Le fichier `version.txt` définit les informations suivantes :
+- **Éditeur (CompanyName):** F4JTV
+- **Description:** SATER Map - Outil de radiogoniométrie pour missions SATER
+- **Copyright:** © 2024-2025 F4JTV - ADRASEC
+- **Version:** 2.0.0.0
+
+Ces métadonnées sont visibles dans les propriétés de l'exécutable Windows (clic droit > Propriétés > Détails).
+
+## Résolution des problèmes
+
+### Windows SmartScreen bloque l'application
+
+Si Windows SmartScreen affiche "Windows a protégé votre ordinateur" :
+
+1. **Solution 1 (utilisateur):** Cliquer sur "Informations complémentaires" puis "Exécuter quand même"
+
+2. **Solution 2 (développeur):** S'assurer que le fichier `version.txt` est utilisé lors de la compilation
+
+3. **Solution 3 (signature):** Signer numériquement l'exécutable avec un certificat de signature de code (payant)
+
+### L'icône ne s'affiche pas
+
+Vérifiez que :
+- Le fichier `img/logo.ico` existe et est un fichier ICO valide
+- L'option `--icon "img\logo.ico"` est présente dans la commande PyInstaller
+- L'option `--add-data "img;img"` est présente pour inclure le dossier img
+
+### Les tuiles ne se téléchargent pas
+
+Voir la section correspondante dans le README.md pour les problèmes de téléchargement de tuiles (SSL, permissions, etc.).
+
+### Les présets ne se sauvegardent pas
+
+Les présets sont stockés dans `%LOCALAPPDATA%\SATER_Map\station_presets.json`. 
+Vérifiez que ce dossier est accessible en écriture.
 
 ## Distribution
 
-Le dossier `dist/SATER_Map/` contient tout le nécessaire.
-Vous pouvez :
-1. Le zipper et le distribuer
-2. Créer un installateur avec NSIS ou Inno Setup
+Pour distribuer l'application :
 
-## Création d'un installateur (optionnel)
+1. **Sans installateur:** Compressez le dossier `dist\SATER_Map\` en ZIP
+2. **Avec installateur:** Utilisez le fichier `SATER_Map_v2.0.0_Setup.exe` généré par Inno Setup
 
-### Avec Inno Setup
-
-1. Télécharger [Inno Setup](https://jrsoftware.org/isinfo.php)
-2. Créer un script `installer.iss` :
-
-```iss
-[Setup]
-AppName=SATER Map
-AppVersion=2.0.0
-DefaultDirName={autopf}\SATER_Map
-DefaultGroupName=SATER Map
-OutputBaseFilename=SATER_Map_Setup
-Compression=lzma
-SolidCompression=yes
-
-[Files]
-Source: "dist\SATER_Map\*"; DestDir: "{app}"; Flags: recursesubdirs
-
-[Icons]
-Name: "{group}\SATER Map"; Filename: "{app}\SATER_Map.exe"
-Name: "{commondesktop}\SATER Map"; Filename: "{app}\SATER_Map.exe"
-```
-
-3. Compiler avec Inno Setup Compiler
-
-## Dépannage
-
-### Erreur "QtWebEngine not found"
-```powershell
-pip uninstall PyQt6-WebEngine PyQt6
-pip install PyQt6 PyQt6-WebEngine --force-reinstall
-```
-
-### Erreur DLL manquante
-Utiliser `--onedir` au lieu de `--onefile`
-
-### L'exe ne démarre pas
-Lancer depuis PowerShell pour voir les erreurs :
-```powershell
-.\dist\SATER_Map\SATER_Map.exe
-```
-
-## Taille approximative
-
-- Mode `--onedir` : ~150-200 Mo (dossier complet)
-- Mode `--onefile` : ~80-100 Mo (exe unique)
-- Installateur : ~50-70 Mo (compressé)
+L'installateur gère automatiquement :
+- Création des raccourcis (menu Démarrer, Bureau)
+- Permissions d'écriture pour le dossier `tiles`
+- Désinstallation propre (suppression des données utilisateur optionnelle)
