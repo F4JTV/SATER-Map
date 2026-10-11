@@ -109,7 +109,17 @@ class TestUi : public QObject
     // label must wrap, not push its card past the edge of a phone).
     void checkFits(const QString &where)
     {
-        const QList<QQuickItem *> all = m_window->contentItem()->findChildren<QQuickItem *>();
+        QStringList problems;
+        // The visual tree: list delegates (the station cards) have no
+        // QObject parent and findChildren() would not see them.
+        QList<QQuickItem *> all;
+        const std::function<void(QQuickItem *)> collect = [&](QQuickItem *item) {
+            for (QQuickItem *c : item->childItems()) {
+                all.append(c);
+                collect(c);
+            }
+        };
+        collect(m_window->contentItem());
         for (QQuickItem *i : all) {
             if (!i->isVisible() || i->width() <= 0 || !i->inherits("QQuickControl")) continue;
             // Only what is on screen: items of hidden pages are invisible,
@@ -122,18 +132,26 @@ class TestUi : public QObject
                 }
             }
             if (!shown) continue;
-            const QRectF r = i->mapRectToScene(QRectF(0, 0, i->width(), i->height()));
-            if (r.left() < -1 || r.right() > m_window->width() + 1) {
-                // Inside a horizontally clipped parent (the station list
-                // never scrolls sideways) - report it.
-                QFAIL(qPrintable(QStringLiteral("%1: %2 \"%3\" spans %4..%5 in a %6 px window")
-                                     .arg(where, QString::fromLatin1(i->metaObject()->className()),
-                                          i->property("text").toString())
-                                     .arg(r.left())
-                                     .arg(r.right())
-                                     .arg(m_window->width())));
+            const QString name = QString::fromLatin1(i->metaObject()->className()) + QStringLiteral(" \"")
+                                 + (i->property("text").toString().isEmpty() ? i->objectName() : i->property("text").toString())
+                                 + QLatin1Char('"');
+            // A button's text and icon inside the button: what they need
+            // against the room its padding leaves (the padding of Material
+            // 3, Qt 6.5 and later, is not that of Material 2).
+            if (i->inherits("QQuickAbstractButton")) {
+                auto *content = i->property("contentItem").value<QQuickItem *>();
+                const qreal room = i->property("availableWidth").toReal();
+                if (content && content->isVisible() && content->implicitWidth() > room + 1)
+                    problems << QStringLiteral("%1 needs %2 px for its content, has %3").arg(name).arg(content->implicitWidth()).arg(room);
             }
+            const QRectF r = i->mapRectToScene(QRectF(0, 0, i->width(), i->height()));
+            // Inside a horizontally clipped parent (the station list never
+            // scrolls sideways) - report it.
+            if (r.left() < -1 || r.right() > m_window->width() + 1)
+                problems << QStringLiteral("%1 spans %2..%3 in a %4 px window").arg(name).arg(r.left()).arg(r.right()).arg(m_window->width());
         }
+        problems.removeDuplicates();
+        if (!problems.isEmpty()) QFAIL(qPrintable(where + QStringLiteral(":\n    ") + problems.join(QStringLiteral("\n    "))));
     }
 
 private slots:
@@ -556,28 +574,57 @@ private slots:
         m_mission->setShowIntersection(false);
         QCOMPARE(m_mission->zoneText(), QStringLiteral("Zone d'intersection: -"));
         m_mission->setShowIntersection(true);
-        QQuickItem *phone = item("phoneLayout");
-        QVERIFY(phone);
-        for (int page = 0; page < 4; ++page) {
-            phone->setProperty("pageIndex", page);
-            QTest::qWait(150);
-            checkFits(QStringLiteral("French phone page %1").arg(page));
+        // The first station is this one: its card shows the Send button.
+        AprsLink *aprs = m_mission->aprs();
+        aprs->setMyCallsign(m_mission->stations()->get(0).value(QStringLiteral("callsign")).toString());
+        const auto dialogs = [this](const QString &where) {
+            const char *names[] = {"stationEditor", "beaconDialog", "reportDialog", "kilometersDialog", "aprsDialog"};
+            for (const char *name : names) {
+                QObject *d = object(name);
+                if (QLatin1String(name) == QLatin1String("stationEditor"))
+                    QMetaObject::invokeMethod(d, "openFor", Q_ARG(QVariant, 0));
+                else if (QLatin1String(name) == QLatin1String("beaconDialog"))
+                    QMetaObject::invokeMethod(d, "openAt", Q_ARG(QVariant, QVariant()), Q_ARG(QVariant, QVariant()));
+                else
+                    QMetaObject::invokeMethod(d, "open");
+                QTRY_VERIFY(d->property("opened").toBool());
+                QTest::qWait(150);
+                checkFits(QStringLiteral("French %1 %2").arg(where, QLatin1String(name)));
+                QMetaObject::invokeMethod(d, "close");
+                QTRY_VERIFY(!d->property("opened").toBool());
+            }
+        };
+        // Phones of several widths: a button's text that fits on one may
+        // not on the next (the record button's label shows when it fits).
+        for (const int w : {360, 393, 412, 430}) {
+            resize(w, 860);
+            QQuickItem *phone = nullptr;
+            QTRY_VERIFY((phone = item("phoneLayout")));
+            for (int page = 0; page < 4; ++page) {
+                phone->setProperty("pageIndex", page);
+                QTest::qWait(150);
+                checkFits(QStringLiteral("French phone %1 px page %2").arg(w).arg(page));
+            }
+            if (w == 360) dialogs(QStringLiteral("phone"));
         }
-        const char *dialogs[] = {"stationEditor", "beaconDialog", "reportDialog", "kilometersDialog"};
-        for (const char *name : dialogs) {
-            QObject *d = object(name);
-            if (QLatin1String(name) == QLatin1String("stationEditor"))
-                QMetaObject::invokeMethod(d, "openFor", Q_ARG(QVariant, 0));
-            else if (QLatin1String(name) == QLatin1String("beaconDialog"))
-                QMetaObject::invokeMethod(d, "openAt", Q_ARG(QVariant, QVariant()), Q_ARG(QVariant, QVariant()));
-            else
-                QMetaObject::invokeMethod(d, "open");
-            QTRY_VERIFY(d->property("opened").toBool());
-            QTest::qWait(150);
-            checkFits(QStringLiteral("French %1").arg(QLatin1String(name)));
-            QMetaObject::invokeMethod(d, "close");
-            QTRY_VERIFY(!d->property("opened").toBool());
+        // The station cards across the widths a phone can have: the record
+        // button shows its word only where it fits.
+        for (int w = 340; w <= 560; w += 6) {
+            resize(w, 860);
+            QQuickItem *phone = nullptr;
+            QTRY_VERIFY((phone = item("phoneLayout")));
+            phone->setProperty("pageIndex", 1);
+            QTest::qWait(40);
+            checkFits(QStringLiteral("French phone %1 px, stations").arg(w));
         }
+        resize(1400, 860);
+        QTRY_VERIFY(item("desktopLayout"));
+        QTest::qWait(150);
+        checkFits(QStringLiteral("French desktop"));
+        dialogs(QStringLiteral("desktop"));
+        aprs->setMyCallsign(QString());
+        resize(360, 740);
+        QTRY_VERIFY(item("phoneLayout"));
         m_app->setLanguage(QStringLiteral("en"));
         resize(1400, 860);
         QTRY_VERIFY(item("desktopLayout"));

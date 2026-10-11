@@ -39,6 +39,10 @@ All notable changes to SATER Map. Versions follow `bump_version.sh`.
   "DDHHMM/" timestamps read as local time; an APRS-IS server that refuses
   the login says why; a dead KISS connection is noticed (TCP keepalive); a
   new mission starts with no operation callsigns.
+- Button texts stay inside their buttons with Qt 6.5 and later (Android,
+  Windows): Material 3 sets its own side padding, which the record button's
+  label and the N/S, E/W and T/M buttons did not account for. Short tab
+  names for the coordinate formats on narrow phones.
 - The emblem redrawn from its vector original (window, menus, Android
   launcher and splash screen, Windows icon, PDF report).
 - Standard dialog buttons (OK, Cancel, Close, Yes, No) in French too.
