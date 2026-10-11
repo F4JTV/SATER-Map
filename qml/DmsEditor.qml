@@ -40,8 +40,19 @@ ColumnLayout {
     TabBar {
         id: tabs
         Layout.fillWidth: true
-        TabButton { text: qsTr("Degrees Minutes Seconds") }
-        TabButton { text: qsTr("Decimal Degrees") }
+        // The full name where it fits, the short one on a narrow phone
+        // (in French the full one takes twice the room).
+        component FormatTab: TabButton {
+            id: tab
+            property string full
+            property string brief
+            TextMetrics { id: fullMetrics; font: tab.font; text: tab.full }
+            // The bar's share, not the tab's own width: the bar sizes its
+            // tabs from their text.
+            text: fullMetrics.advanceWidth <= tabs.width / tabs.count - tab.leftPadding - tab.rightPadding ? full : brief
+        }
+        FormatTab { full: qsTr("Degrees Minutes Seconds"); brief: qsTr("DMS") }
+        FormatTab { full: qsTr("Decimal Degrees"); brief: qsTr("Decimal") }
     }
 
     StackLayout {

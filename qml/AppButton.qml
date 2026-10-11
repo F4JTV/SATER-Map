@@ -17,6 +17,13 @@ import QtQuick.Controls.Material
 
 Button {
     id: control
+    // The room left and right of the text, the same on every Qt.  Material
+    // 3 (Qt 6.5 and later) binds leftPadding and rightPadding itself, 24
+    // and 16 px, which a plain "padding:" never overrode: a word that
+    // fitted with Qt 6.4 ran past the edge of the button on a phone.
+    property real sidePadding: 14
+    leftPadding: sidePadding
+    rightPadding: sidePadding
     readonly property color fill: highlighted ? window.Material.accent : window.mc.button
     readonly property color ink: window.Material.foreground
     Material.foreground: highlighted && !flat ? (window.monochrome ? window.theme.background : "#ffffff") : window.Material.foreground

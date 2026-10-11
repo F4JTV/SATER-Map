@@ -192,19 +192,27 @@ Pane {
                 id: recordButton
                 objectName: "recordButton"
                 Layout.fillWidth: true
+                sidePadding: 8
                 highlighted: true
                 Material.accent: window.Material.accent
                 onClicked: { mission.recordStation(card.index); window.showMessage(mission.statusMessage); app.haptic() }
-                contentItem: RowLayout {
-                    spacing: 6
-                    Item { Layout.fillWidth: true }
-                    Icon { kind: "record"; Layout.preferredWidth: 18; Layout.preferredHeight: 18
-                           colour: window.monochrome ? window.theme.background : "#ffffff" }
-                    // The word when it fits (a narrow phone in French: the icon alone).
-                    Label { id: recordLabel; text: qsTr("Record"); font.bold: true
-                            visible: recordButton.width >= implicitWidth + 18 + 6 + 2 * recordButton.padding + 8
-                            color: window.monochrome ? window.theme.background : "#ffffff" }
-                    Item { Layout.fillWidth: true }
+                contentItem: Item {
+                    implicitWidth: recordRow.implicitWidth
+                    implicitHeight: recordRow.implicitHeight
+                    Row {
+                        id: recordRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        Icon { kind: "record"; width: 18; height: 18; anchors.verticalCenter: parent.verticalCenter
+                               colour: window.monochrome ? window.theme.background : "#ffffff" }
+                        // The word when it fits in the room the button's
+                        // padding leaves (a narrow phone in French: the
+                        // icon alone).
+                        Label { id: recordLabel; text: qsTr("Record"); font.bold: true
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: recordButton.availableWidth >= implicitWidth + 18 + recordRow.spacing
+                                color: window.monochrome ? window.theme.background : "#ffffff" }
+                    }
                 }
             }
         }

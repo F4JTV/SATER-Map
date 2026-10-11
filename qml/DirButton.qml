@@ -18,6 +18,7 @@ AppButton {
     property bool compact: true      // the height of a compact NumberField
     flat: true
     padding: 0
+    sidePadding: 0
     topInset: 0
     bottomInset: 0
     leftInset: 0
