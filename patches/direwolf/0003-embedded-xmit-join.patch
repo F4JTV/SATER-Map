@@ -1,0 +1,170 @@
+Embedded host: the transmit threads end, and the host waits for them.
+
+With 0001 a transmit thread noticed tq_term() only while its queue was
+empty: one busy sending (or waiting for a clear channel) kept going after
+the host had closed the audio device, and after the next tq_init() it
+took frames from the new queue as a second consumer.  It now checks the
+flag while it waits for the channel and between frames, and counts
+itself out (xmit_threads_active, xmit_thread_exiting) so that the host can
+wait for it before audio_close().
+
+From SATER Map; applies to Dire Wolf 1.8 after 0001.
+
+--- a/src/xmit.c
++++ b/src/xmit.c
+@@ -205,6 +205,44 @@
+ static struct audio_s *save_audio_config_p;
+ 
+ 
++/* Embedded host: the host waits for the transmit threads to end */
++/* (xmit_threads_active) before it closes the audio device and starts */
++/* the modem again.  A thread left running would write to a closed */
++/* device and, after the next tq_init, take frames from the new queue. */
++
++static volatile int xmit_active_threads = 0;
++
++/* Set in each transmit thread, so that xmit_thread_exiting() can tell */
++/* whether the thread about to end is one of them. */
++
++#if defined(_MSC_VER)
++static __declspec(thread) int xmit_is_xmit_thread = 0;
++#else
++static _Thread_local int xmit_is_xmit_thread = 0;
++#endif
++
++int xmit_threads_active (void)
++{
++	return (xmit_active_threads);
++}
++
++/* Called by a transmit thread when it returns, and by the host's exit() */
++/* replacement on whatever thread is ending. */
++
++void xmit_thread_exiting (void)
++{
++	if ( ! xmit_is_xmit_thread) {
++	  return;
++	}
++	xmit_is_xmit_thread = 0;
++#if defined(__GNUC__) || defined(__clang__)
++	__atomic_sub_fetch (&xmit_active_threads, 1, __ATOMIC_SEQ_CST);
++#else
++	InterlockedDecrement ((volatile LONG *)&xmit_active_threads);
++#endif
++}
++
++
+ void xmit_init (struct audio_s *p_modem, int debug_xmit_packet)
+ {
+ 	int j;
+@@ -276,12 +314,16 @@
+ // underrun on the audio output device.
+ 
+ 
++	xmit_active_threads = 0;
++
+ 	for (j=0; j<MAX_RADIO_CHANS; j++) {
+ 
+ 	  if (p_modem->chan_medium[j] == MEDIUM_RADIO) {
++	    xmit_active_threads++;	/* the thread counts itself out when it ends */
+ #if __WIN32__
+ 	    xmit_th[j] = (HANDLE)_beginthreadex (NULL, 0, xmit_thread, (void*)(ptrdiff_t)j, 0, NULL);
+ 	    if (xmit_th[j] == NULL) {
++	      xmit_active_threads--;
+ 	       text_color_set(DW_COLOR_ERROR);
+ 	      dw_printf ("Could not create xmit thread %d\n", j);
+ 	      return;
+@@ -317,6 +359,7 @@
+ 	    e = pthread_create (&(xmit_tid[j]), NULL, xmit_thread, (void *)(ptrdiff_t)j);
+ #endif
+ 	    if (e != 0) {
++	      xmit_active_threads--;
+ 	      text_color_set(DW_COLOR_ERROR);
+ 	      perror("Could not create xmit thread for audio device");
+ 	      return;
+@@ -516,6 +559,7 @@
+ 	int prio;
+ 	int ok;
+ 
++	xmit_is_xmit_thread = 1;
+ 
+ 	while ( ! tq_is_terminating()) {
+ 
+@@ -530,7 +574,7 @@
+ #endif
+ 
+ 	  // Does this extra loop offer any benefit?
+-	  while (tq_peek(chan, TQ_PRIO_0_HI) != NULL || tq_peek(chan, TQ_PRIO_1_LO) != NULL) {
++	  while ( ! tq_is_terminating() && (tq_peek(chan, TQ_PRIO_0_HI) != NULL || tq_peek(chan, TQ_PRIO_1_LO) != NULL)) {
+ 
+ /* 
+  * Wait for the channel to be clear.
+@@ -539,6 +583,15 @@
+  */
+ 	    ok = wait_for_clear_channel (chan, xmit_slottime[chan], xmit_persist[chan], xmit_fulldup[chan]);
+ 
++	    /* Embedded host stopping: the frame stays in the queue, */
++	    /* which the host empties. */
++	    if (tq_is_terminating()) {
++	      if (ok) {
++	        dw_mutex_unlock (&(audio_out_dev_mutex[ACHAN2ADEV(chan)]));
++	      }
++	      break;
++	    }
++
+ 	    prio = TQ_PRIO_1_LO;
+ 	    pp = tq_remove (chan, TQ_PRIO_0_HI);
+ 	    if (pp != NULL) {
+@@ -650,6 +703,7 @@
+ 	  } /* while queue not empty */
+ 	} /* while not terminating */
+ 
++	xmit_thread_exiting ();
+ 	return 0;	/* Only reached when tq_term() was called. */
+ 
+ } /* end xmit_thread */
+@@ -1439,6 +1493,9 @@
+ 
+ 	while (hdlc_rec_data_detect_any(chan)) {
+ 	  SLEEP_MS(WAIT_CHECK_EVERY_MS);
++	  if (tq_is_terminating()) {
++	    return 0;
++	  }
+ 	  n++;
+ 	  if (n > (WAIT_TIMEOUT_MS / WAIT_CHECK_EVERY_MS)) {
+ 	    return 0;
+@@ -1469,6 +1526,9 @@
+ 
+ 	  SLEEP_MS (slottime * 10);
+ 
++	  if (tq_is_terminating()) {
++	    return 0;
++	  }
+ 	  if (hdlc_rec_data_detect_any(chan)) {
+ 	    goto start_over_again;
+ 	  }
+@@ -1493,6 +1553,9 @@
+ 
+ 	while ( ! dw_mutex_try_lock(&(audio_out_dev_mutex[ACHAN2ADEV(chan)]))) {
+ 	  SLEEP_MS(WAIT_CHECK_EVERY_MS);
++	  if (tq_is_terminating()) {
++	    return 0;
++	  }
+ 	  n++;
+ 	  if (n > (WAIT_TIMEOUT_MS / WAIT_CHECK_EVERY_MS)) {
+ 	    return 0;
+--- a/src/xmit.h
++++ b/src/xmit.h
+@@ -8,6 +8,12 @@
+ 
+ extern void xmit_init (struct audio_s *p_modem, int debug_xmit_packet);
+ 
++/* Embedded host support: transmit threads not yet ended after tq_term(). */
++
++extern int xmit_threads_active (void);
++
++extern void xmit_thread_exiting (void);
++
+ extern void xmit_set_txdelay (int channel, int value);
+ 
+ extern void xmit_set_persist (int channel, int value);

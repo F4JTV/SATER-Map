@@ -1,0 +1,53 @@
+.TH SATER-MAP 1 "October 2026" "SATER Map" "User Commands"
+.SH NAME
+sater-map \- direction finding map for distress beacon searches (SATER)
+.SH SYNOPSIS
+.B sater-map
+.SH DESCRIPTION
+.B sater-map
+draws on a map the bearings several stations take on a distress beacon,
+each with its uncertainty cone, and computes the zone where they cross: its
+centre in decimal degrees, degrees-minutes-seconds and MGRS, its radius and
+surface. A station heard at S0 stays on the map without a bearing.
+.PP
+The best estimate is the least-squares position of all the bearings, each
+weighted by its uncertainty, with its 50 % and 95 % confidence ellipses and a
+check that the bearings agree. A bearing read on a compass (magnetic north)
+is corrected by the declination of the World Magnetic Model (WMM2025).
+.PP
+Bearings travel by APRS as standard DF reports: a field team sends its own,
+the command post receives those of the operation's callsigns over APRS-IS or
+a KISS TNC on TCP (Dire Wolf, Soundmodem) and puts them on the map. Each
+SSID of a callsign is a station of its own. The Android application sends
+by radio through a modem of its own (Dire Wolf, built in) and an audio
+interface.
+.PP
+The mission timer, the history of the recorded bearings, the kilometres each
+station drove and the position of the beacon make up the mission, which is
+saved as it changes and restored at the next start. It is exported as a PDF
+report, KML, JSON (the format of SATER Map 2) or a stand-alone HTML map.
+.PP
+Map tiles come from OpenStreetMap, OpenTopoMap, IGN or Esri. "Download
+visible tiles" stores the current view, two zoom levels below and above, for
+use without a network ("Offline").
+.SH FILES
+.TP
+.I ~/.config/SATER_Map/station_presets.json
+The station presets.
+.TP
+.I ~/.config/SATER_Map/autosave.json
+The current mission.
+.TP
+.I ~/.local/share/SATER_Map/tiles/
+The downloaded tiles, \fIprovider\fR/\fIz\fR/\fIx\fR/\fIy\fR.png (another
+folder can be chosen in the preferences).
+.TP
+.I ~/.config/SATER_Map/SATER_Map.conf
+The settings.
+.SH ENVIRONMENT
+.TP
+.B SATER_MAP_RASTER=1
+Draw the map on the CPU even when OpenGL is available.
+.TP
+.B SATER_SCREENSHOT_DIR=\fIdir\fR
+Render the interface with a sample mission into PNG files in \fIdir\fR and quit.

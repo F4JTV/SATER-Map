@@ -1,0 +1,34 @@
+// sater_map.rc - icon and version details of SATER_Map.exe (Windows).
+// Configured by CMake from the project version.
+#include <winver.h>
+
+IDI_ICON1 ICON "@CMAKE_SOURCE_DIR@/assets/logo.ico"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION @SATER_VERSION_COMMAS@,0
+ PRODUCTVERSION @SATER_VERSION_COMMAS@,0
+ FILEFLAGSMASK 0x3fL
+ FILEFLAGS 0x0L
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "SATER Map contributors"
+            VALUE "FileDescription", "SATER Map - direction finding for SATER missions"
+            VALUE "FileVersion", "@PROJECT_VERSION@.0"
+            VALUE "InternalName", "SATER_Map"
+            VALUE "LegalCopyright", "GPL-3.0-or-later"
+            VALUE "OriginalFilename", "SATER_Map.exe"
+            VALUE "ProductName", "SATER Map"
+            VALUE "ProductVersion", "@PROJECT_VERSION@.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

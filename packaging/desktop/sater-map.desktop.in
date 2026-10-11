@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=SATER Map
+GenericName=Direction finding map
+GenericName[fr]=Carte de radiogoniométrie
+Comment=Bearings of several stations on a map, and the zone where a distress beacon lies
+Comment[fr]=Azimuts de plusieurs stations sur une carte, et la zone où se trouve une balise de détresse
+Exec=@BINDIR@/sater-map
+Icon=sater-map
+Terminal=false
+Categories=Utility;Maps;HamRadio;Qt;
+Keywords=SATER;direction finding;beacon;bearing;azimuth;MGRS;map;radio;
+Keywords[fr]=SATER;radiogoniométrie;balise;azimut;MGRS;carte;radio;
+StartupNotify=true

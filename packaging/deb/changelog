@@ -1,0 +1,8 @@
+sater-map (3.0.0) unstable; urgency=medium
+
+  * C++/Qt 6 Quick port of SATER Map 2.0 (Python): Windows, Linux and
+    Android from one code base.
+  * MGRS references in the even UTM zones fixed (the row letter was 500 km
+    off).
+
+ -- SATER Map contributors <noreply@satermap.invalid>  Sat, 10 Oct 2026 20:02:45 +0200

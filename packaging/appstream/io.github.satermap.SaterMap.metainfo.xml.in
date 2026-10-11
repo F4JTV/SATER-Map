@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.satermap.SaterMap</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>SATER Map</name>
+  <summary>Direction finding map for distress beacon searches</summary>
+  <description>
+    <p>
+      Several stations take bearings on a distress beacon. SATER Map draws
+      each bearing with its uncertainty cone on a map, computes the zone
+      where they cross, and gives its centre in decimal degrees,
+      degrees-minutes-seconds and MGRS.
+    </p>
+    <p>
+      Mission timer, history of the bearings, kilometres driven, beacon
+      position, station presets, map tiles stored for use without a
+      network, and a PDF mission report; exports to KML, JSON and a
+      stand-alone HTML map.
+    </p>
+  </description>
+  <launchable type="desktop-id">sater-map.desktop</launchable>
+  <categories>
+    <category>Utility</category>
+    <category>HamRadio</category>
+  </categories>
+  <releases>
+    <release version="@PROJECT_VERSION@" date="@SATER_RELEASE_DATE@"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>
