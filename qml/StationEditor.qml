@@ -136,11 +136,16 @@ AppDialog {
             color: window.colourOf("dim")
             text: qsTr("S0: the station is on the map but hears nothing - no bearing line, no part in the zone.")
         }
-        // This station's own row: save the changes and send the bearing.
+        // Save the changes and send the bearing: this station's own as a DF
+        // report, another's (read out by telephone) as an object named
+        // after it.
         AppButton {
+            id: sendButton
             objectName: "editorSend"
             Layout.fillWidth: true
-            visible: mission.aprs.myCallsign.length > 0 && mission.aprs.isMine(callField.text)
+            visible: mission.aprs.myCallsign.length > 0 && callField.text.trim().length > 0
+            // myCallsign read first: the binding follows it.
+            readonly property bool own: mission.aprs.myCallsign.length > 0 && mission.aprs.isMine(callField.text)
             highlighted: mission.aprs.canSend
             text: qsTr("OK and send by APRS")
             onClicked: {
@@ -149,6 +154,16 @@ AppDialog {
                 mission.aprs.sendBearing(r)
                 window.showMessage(mission.statusMessage)
             }
+        }
+        Label {
+            objectName: "editorRelayNote"
+            Layout.fillWidth: true
+            visible: sendButton.visible && !sendButton.own
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: window.colourOf("dim")
+            text: qsTr("Sent as an APRS object named %1, from %2.")
+                      .arg(callField.text.trim()).arg(mission.aprs.myCallsign)
         }
     }
 }

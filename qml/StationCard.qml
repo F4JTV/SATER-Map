@@ -97,6 +97,21 @@ Pane {
                 onClicked: cardMenu.popup(this, width - cardMenu.width, height)
                 AppMenu {
                     id: cardMenu
+                    // Another station's bearing (read out by telephone): out
+                    // by APRS as an object named after it.  This station's
+                    // own has its button on the card.
+                    MenuItem {
+                        objectName: "relayItem"
+                        visible: mission.aprs.myCallsign.length > 0 && !mission.aprs.isMine(card.callsign)
+                        height: visible ? implicitHeight : 0
+                        enabled: card.signal !== "S0" && card.callsign.trim().length > 0
+                        text: qsTr("Send by APRS")
+                        onTriggered: {
+                            mission.aprs.sendBearing(card.index)
+                            window.showMessage(mission.statusMessage)
+                            app.haptic()
+                        }
+                    }
                     MenuItem { text: qsTr("Edit the position"); onTriggered: window.editStation(card.index) }
                     MenuItem {
                         text: qsTr("Show on the map")

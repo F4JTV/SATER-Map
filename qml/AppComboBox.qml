@@ -16,6 +16,16 @@ ComboBox {
     topInset: 0
     bottomInset: 0
     leftPadding: compact ? 6 : 10
+    // The choice shown cut with "…" when longer than the box (Material's
+    // own is a text field, which clips it: "Géographique (carte," on a
+    // phone in French).
+    contentItem: Label {
+        text: control.displayText
+        font: control.font
+        color: control.enabled ? control.Material.foreground : control.Material.hintTextColor
+        verticalAlignment: Text.AlignVCenter
+        elide: Text.ElideRight
+    }
     background: Rectangle {
         radius: 4
         color: window.mc.field
