@@ -369,7 +369,9 @@ Item {
         property string body
         property string target
         padding: 12
-        width: Math.min(pane.width - 20, Math.max(220, infoText.implicitWidth + 24))
+        // As wide as the text or the row of buttons, whichever is wider, up
+        // to the map's width; past that the buttons go on a second line.
+        width: Math.min(pane.width - 20, Math.max(220, infoText.implicitWidth + 24, infoFlow.needed + 24))
         background: Item {
             SoftShadow { anchors.fill: parent; radius: 8; spread: 6; offsetY: 3; strength: window.mc.shadow }
             Rectangle { anchors.fill: parent; radius: 8; color: window.mc.card; border.width: 1; border.color: window.mc.edge }
@@ -387,28 +389,40 @@ Item {
             Label { text: infoPopup.heading; font.bold: true; font.pixelSize: 14
                     color: infoPopup.target === "beacon" ? "#ff3333" : window.Material.foreground }
             Label { id: infoText; text: infoPopup.body; font.family: "monospace"; font.pixelSize: 12 }
-            RowLayout {
+            Flow {
+                id: infoFlow
                 visible: infoPopup.target.length > 0
+                Layout.fillWidth: true
                 spacing: 4
+                readonly property bool station: infoPopup.target.startsWith("station:")
+                readonly property bool beacon: infoPopup.target === "beacon"
+                // What the buttons shown take side by side.
+                readonly property real needed: copyButton.implicitWidth
+                    + (station ? infoRecord.implicitWidth + stationEdit.implicitWidth + 2 * spacing : 0)
+                    + (beacon ? beaconEdit.implicitWidth + spacing : 0)
                 AppButton {
+                    id: infoRecord
                     visible: infoPopup.target.startsWith("station:")
                     text: qsTr("Record")
                     flat: true
                     onClicked: { mission.recordStation(parseInt(infoPopup.target.split(":")[1])); window.showMessage(mission.statusMessage); infoPopup.close() }
                 }
                 AppButton {
+                    id: stationEdit
                     visible: infoPopup.target.startsWith("station:")
                     text: qsTr("Edit")
                     flat: true
                     onClicked: { window.editStation(parseInt(infoPopup.target.split(":")[1])); infoPopup.close() }
                 }
                 AppButton {
+                    id: beaconEdit
                     visible: infoPopup.target === "beacon"
                     text: qsTr("Edit")
                     flat: true
                     onClicked: { window.setBeacon(); infoPopup.close() }
                 }
                 AppButton {
+                    id: copyButton
                     text: qsTr("Copy")
                     flat: true
                     onClicked: { app.copyToClipboard(infoPopup.heading + "\n" + infoPopup.body); infoPopup.close() }

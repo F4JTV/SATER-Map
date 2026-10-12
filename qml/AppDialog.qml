@@ -54,6 +54,14 @@ Dialog {
         }
     }
     onAboutToShow: retranslateButtons()
+    // Qt 6.4 (Ubuntu 24.04): the layouts of a closed dialog do not follow
+    // what changed meanwhile (the language: "Add" became "Ajouter") and
+    // keep the old sizes once it opens.  A width change makes them lay
+    // out again.
+    onOpened: {
+        holder.width = flick.width - 1
+        holder.width = Qt.binding(function() { return flick.width })
+    }
 
     contentItem: Flickable {
         id: flick

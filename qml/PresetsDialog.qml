@@ -28,7 +28,8 @@ AppDialog {
         open()
     }
     function toggle(row) {
-        var s = selected
+        // A copy: the same object assigned back would not notify.
+        var s = Object.assign({}, selected)
         if (s[row]) delete s[row]
         else s[row] = true
         selected = s

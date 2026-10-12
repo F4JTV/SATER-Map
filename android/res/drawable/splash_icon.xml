@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The emblem of Android 12's splash screen.  The system scales the icon
+     to 288 dp and shows only the circle of 192 dp in its middle: inset by
+     a sixth on each side, the whole emblem (its lettered ring included)
+     lies inside that circle. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/splash_emblem"
+    android:inset="17%"/>

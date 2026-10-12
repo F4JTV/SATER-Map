@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The activity's theme (set by build_android.sh): a white window behind
+     the splash screen rather than the device's own colour, which Android
+     12 and later tint from the wallpaper. -->
+<resources>
+    <style name="SaterTheme" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+    </style>
+</resources>

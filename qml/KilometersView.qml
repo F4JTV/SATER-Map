@@ -49,7 +49,11 @@ ColumnLayout {
                 suffix: " km"
                 value: view.values[modelData] || 0
                 onEdited: function(v) {
-                    var n = view.values
+                    // A new object: assigning the same one back changes
+                    // nothing for QML (Qt 6.5 and later), so the field's
+                    // binding kept the old value and showed it again - 0 -
+                    // as soon as it lost the focus.
+                    var n = Object.assign({}, view.values)
                     n[modelData] = v
                     view.values = n
                 }

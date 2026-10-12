@@ -130,6 +130,8 @@ ColumnLayout {
             }
             AppButton {
                 objectName: "teamAdd"
+                // Never narrower than its word: the field gives way.
+                Layout.minimumWidth: implicitWidth
                 text: qsTr("Add")
                 onClicked: view.addCallsign()
             }
@@ -358,6 +360,30 @@ ColumnLayout {
             text: app.android
                   ? qsTr("1200 baud APRS through the radio's audio interface: a USB sound card (Digirig and the like) or the headset jack. The transmitter is keyed by the interface's VOX, the sound card's GPIO or a USB serial adapter; Android asks once for the USB device and for the microphone.")
                   : qsTr("1200 baud APRS through the radio's audio interface (a USB sound card such as a Digirig). The transmitter is keyed by the interface's VOX, the sound card's GPIO or the RTS/DTR line of a serial adapter.")
+        }
+    }
+
+    // Android: APRS goes on minimised or with the phone locked (a
+    // foreground service); battery saving must leave it its network.
+    Card {
+        objectName: "backgroundCard"
+        visible: app.android
+        title: qsTr("In the background")
+        Layout.fillWidth: true
+        Label {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            font.pixelSize: 12
+            color: app.backgroundAllowed ? window.colourOf("dim") : window.colourOf("error")
+            text: app.backgroundAllowed
+                  ? qsTr("APRS keeps working when SATER Map is minimised or the phone locked, as long as a connection is on (a notification says so).")
+                  : qsTr("Battery saving may cut the network when the phone is locked: allow SATER Map to run in the background.")
+        }
+        AppButton {
+            visible: !app.backgroundAllowed
+            Layout.fillWidth: true
+            text: qsTr("Allow in the background")
+            onClicked: app.allowBackground()
         }
     }
 

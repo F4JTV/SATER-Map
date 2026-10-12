@@ -12,7 +12,8 @@ Playwright (pip install playwright; playwright install chromium), at
 
 Writes assets/logo.png (1024 px: window icon, About box, PDF report),
 assets/logo.ico (16 to 256 px), android/res/drawable-*/icon.png, the splash
-logo android/res/drawable/splash_logo.png and
+logos android/res/drawable/splash_logo.png (Qt's splash screen) and
+android/res/drawable-nodpi/splash_emblem.png (Android 12's), and
 packaging/icons/<size>/sater-map.png.
 """
 import sys
@@ -59,6 +60,9 @@ def main():
     for folder, px in (("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)):
         save(logo, ROOT / f"android/res/drawable-{folder}/icon.png", px)
     save(logo, ROOT / "android/res/drawable/splash_logo.png", 320)
+    # Android 12 and later: the system's splash screen, at full resolution
+    # (android/res/drawable/splash_icon.xml insets it into the circle).
+    save(logo, ROOT / "android/res/drawable-nodpi/splash_emblem.png", 768)
     for px in (48, 64, 128, 256):
         save(logo, ROOT / f"packaging/icons/{px}x{px}/sater-map.png", px)
 

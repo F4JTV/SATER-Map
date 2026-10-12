@@ -43,20 +43,12 @@ AppDialog {
                        hint: qsTr("Keywords separated by commas") }
         }
         Label { text: qsTr("Comments / Notes:"); font.bold: true }
-        TextArea {
+        AppTextArea {
             id: commentArea
             objectName: "reportComment"
             Layout.fillWidth: true
             Layout.preferredHeight: 120
-            wrapMode: TextEdit.Wrap
-            // An example in the empty box only (see AppField.qml).
-            placeholderText: length === 0 && !activeFocus ? qsTr("Add your comments, observations or notes on the mission here...") : ""
-            background: Rectangle {
-                radius: 4
-                color: window.mc.field
-                border.width: commentArea.activeFocus ? 2 : 1
-                border.color: commentArea.activeFocus ? window.Material.accent : window.mc.fieldEdge
-            }
+            hint: qsTr("Add your comments, observations or notes on the mission here...")
         }
     }
 }
