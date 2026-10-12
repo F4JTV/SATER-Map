@@ -92,9 +92,15 @@ reading is corrected by the declination first), N = 9 (manual), range code
 
 The destination APZSAT is in the experimental range of APRS "tocalls".
 
-On the phone the built-in modem hears the radio while SATER Map is on
-screen: Android gives silence to the microphone of an application in the
-background. Sending is done from the screen anyway.
+On the phone APRS keeps going when SATER Map is minimised or the phone
+locked, as long as a connection is on: a foreground service (its
+notification says so) keeps the application, the APRS-IS and KISS
+connections and the built-in modem's microphone alive; a bearing received
+meanwhile shows as a notification. The first time a connection is switched
+on, Android asks to allow notifications and to exempt SATER Map from
+battery saving, which would otherwise cut the network with the screen off
+(the APRS settings show it, with a button to ask again). Swiping SATER Map
+away from the recent applications quits it.
 
 A new mission starts with an empty list of operation callsigns; an imported
 mission brings its own, if it has one. This station's own reports, heard
@@ -149,7 +155,9 @@ Oboe (the modem's audio); the script clones Dire Wolf 1.8 into
 `external/direwolf` and patches it (`scripts/fetch_direwolf.sh`, needs `git`
 and `patch`). Keep the
 signing key (`~/.satermap-android.keystore`): an update signed with another
-key is refused. The application runs full screen; the system bars come back
+key is refused. Build with this script rather than from Qt Creator: it
+completes Qt's manifest (the background service, the event loop kept
+running off screen, the splash screens). The application runs full screen; the system bars come back
 with a swipe from the edge.
 
 ### The built-in modem elsewhere

@@ -115,4 +115,16 @@ void AppController::activated()
 {
     androidui::hideSystemBars();
     androidui::setKeepScreenOn(m_keepScreenOn);
+    // Back from the system's battery dialog, maybe.
+    emit backgroundChanged();
+}
+
+bool AppController::backgroundAllowed() const
+{
+    return androidui::backgroundAllowed();
+}
+
+void AppController::allowBackground()
+{
+    androidui::requestBackground();
 }

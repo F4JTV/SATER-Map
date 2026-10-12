@@ -2,8 +2,12 @@
  * ReportWriter.h - the PDF mission report.
  *
  * The Python version built it with reportlab; this one lays out the same
- * sections, tables and colours with QTextDocument and prints them through
- * QPdfWriter, which needs nothing outside QtGui on any platform.
+ * sections, tables and colours with QTextDocument and paints them through
+ * QPdfWriter, which needs nothing outside QtGui on any platform.  Each
+ * section (a heading and its table, the map) is laid out on its own and
+ * kept on one page: it starts a new page when it does not fit on this one,
+ * and only a table taller than a whole page is cut, between rows, with its
+ * header row repeated.
  *
  * This file is part of SATER Map.
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -66,5 +70,16 @@ QString reportHtml(const ReportData &data);
 
 // Write the PDF to device (opened for writing).  False on failure.
 bool writeReport(const ReportData &data, QIODevice *device, QString *error);
+
+// Where each piece of the report lands (for the tests): the section it
+// belongs to, its page (from 0), top and height in the text area of the
+// page, in 1/96 inch.  pageHeight: the height of that text area.
+struct ReportPiece {
+    QString section;
+    int page = 0;
+    double top = 0;
+    double height = 0;
+};
+QList<ReportPiece> reportLayout(const ReportData &data, double *pageHeight = nullptr);
 
 } // namespace sater

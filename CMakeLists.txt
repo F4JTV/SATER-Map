@@ -146,6 +146,7 @@ set(SATER_QML_FILES
     qml/AlertDialog.qml
     qml/AppButton.qml
     qml/AppField.qml
+    qml/AppTextArea.qml
     qml/AprsLogDialog.qml
     qml/AprsStatus.qml
     qml/AprsView.qml
@@ -202,11 +203,23 @@ elseif(ANDROID)
     if(COMMAND qt_add_android_permission)
         qt_add_android_permission(sater-map NAME android.permission.INTERNET)
         qt_add_android_permission(sater-map NAME android.permission.ACCESS_NETWORK_STATE)
+        # APRS goes on minimised or with the phone locked: a foreground
+        # service (KeepAliveService.java, declared by build_android.sh), a
+        # wake lock, a Wi-Fi lock, its notification, and the exemption from
+        # battery saving asked of the user.
+        qt_add_android_permission(sater-map NAME android.permission.FOREGROUND_SERVICE)
+        qt_add_android_permission(sater-map NAME android.permission.FOREGROUND_SERVICE_SPECIAL_USE)
+        qt_add_android_permission(sater-map NAME android.permission.WAKE_LOCK)
+        qt_add_android_permission(sater-map NAME android.permission.ACCESS_WIFI_STATE)
+        qt_add_android_permission(sater-map NAME android.permission.POST_NOTIFICATIONS)
+        qt_add_android_permission(sater-map NAME android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
         if(SATER_MODEM)
-            # The built-in modem listens to the radio; USB devices (the
-            # PTT) are granted per device at run time, no permission here.
+            # The built-in modem listens to the radio, also in the
+            # background; USB devices (the PTT) are granted per device at
+            # run time, no permission here.
             qt_add_android_permission(sater-map NAME android.permission.RECORD_AUDIO)
             qt_add_android_permission(sater-map NAME android.permission.MODIFY_AUDIO_SETTINGS)
+            qt_add_android_permission(sater-map NAME android.permission.FOREGROUND_SERVICE_MICROPHONE)
         endif()
     else()
         message(WARNING "This Qt has no qt_add_android_permission(): add INTERNET and RECORD_AUDIO to the manifest by hand.")

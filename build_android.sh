@@ -185,6 +185,14 @@ if "android:enableOnBackInvokedCallback" not in app_tag:
     app_tag = set_attr(app_tag, "android:enableOnBackInvokedCallback", "false")
 text = text[:app.start()] + app_tag + text[app.end():]
 
+# The activity's theme: a white window behind the splash screens (Android
+# 12 and later draw one of their own first, in the device's colours unless
+# told otherwise) - android/res/values*/styles.xml.
+activity = re.search(r'<activity\b[^>]*>', text, re.S)
+if activity is None:
+    sys.exit("no <activity> in the template")
+text = text[:activity.start()] + set_attr(activity.group(0), "android:theme", "@style/SaterTheme") + text[activity.end():]
+
 # The splash meta-data belongs to the activity: just before its closing
 # tag, whatever the layout of the template (Qt 6.11 spreads its meta-data
 # over several lines).
@@ -195,7 +203,34 @@ indent = marker.group(1) + "    "
 insert = (f"{indent}<!-- Added by build_android.sh: the splash screen, android/res/drawable/splash.xml. -->\n"
           f'{indent}<meta-data android:name="android.app.splash_screen_drawable" android:resource="@drawable/splash"/>\n'
           f'{indent}<meta-data android:name="android.app.splash_screen_sticky" android:value="false"/>\n')
+# Qt suspends an application's event loop when its activity leaves the
+# screen unless background_running is true: every timer and socket on the
+# Qt thread would stop the moment the phone locks - APRS-IS and the modem's
+# frames among them (learned in AX25Chat).  True, whether the template
+# carries the entry or not.
+bg = re.compile(r'(<meta-data\s+android:name="android.app.background_running"\s+android:value=")false(")', re.S)
+if bg.search(text):
+    text = bg.sub(r'\1true\2', text)
+    marker = re.search(r'^([ \t]*)</activity>', text, re.M)
+elif 'android.app.background_running' not in text:
+    insert += (f"{indent}<!-- Added by build_android.sh: keep the Qt event loop running off screen. -->\n"
+               f'{indent}<meta-data android:name="android.app.background_running" android:value="true"/>\n')
 text = text[:marker.start()] + insert + text[marker.start():]
+
+# The foreground service that keeps APRS going in the background
+# (android/src/org/satermap/app/KeepAliveService.java), with every type it
+# may use; it picks at run time those whose permissions were granted.
+app_end = re.search(r'^([ \t]*)</application>', text, re.M)
+if app_end is None:
+    sys.exit("no </application> in the template")
+indent = app_end.group(1) + "    "
+service = (f"{indent}<!-- Added by build_android.sh: android/src/org/satermap/app/KeepAliveService.java. -->\n"
+           f'{indent}<service android:name="org.satermap.app.KeepAliveService" android:exported="false"\n'
+           f'{indent}         android:foregroundServiceType="microphone|specialUse|dataSync">\n'
+           f'{indent}    <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"\n'
+           f'{indent}              android:value="Amateur radio APRS link kept open for a distress beacon search (bearings sent and received)"/>\n'
+           f'{indent}</service>\n')
+text = text[:app_end.start()] + service + text[app_end.start():]
 
 # Refuse to hand androiddeployqt something it cannot parse.
 root = ET.fromstring(text.encode("utf-8"))
@@ -206,6 +241,10 @@ if application.get(ANDROID + "enableOnBackInvokedCallback") is None:
     sys.exit("enableOnBackInvokedCallback did not make it into the manifest")
 if "%%INSERT_PERMISSIONS" not in text:
     sys.exit("the permissions marker androiddeployqt fills in is gone")
+if 'android.app.background_running" android:value="true"' not in text:
+    sys.exit("background_running did not make it into the manifest")
+if root.find("application/service") is None:
+    sys.exit("the foreground service did not make it into the manifest")
 open(target, "w", encoding="utf-8").write(text)
 PYEOF
 [ -f "$GENERATED" ] || die "Could not derive the manifest from $TEMPLATE."

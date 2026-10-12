@@ -141,14 +141,33 @@ class TestUi : public QObject
             if (i->inherits("QQuickAbstractButton")) {
                 auto *content = i->property("contentItem").value<QQuickItem *>();
                 const qreal room = i->property("availableWidth").toReal();
-                if (content && content->isVisible() && content->implicitWidth() > room + 1)
-                    problems << QStringLiteral("%1 needs %2 px for its content, has %3").arg(name).arg(content->implicitWidth()).arg(room);
+                if (content && content->isVisible() && content->implicitWidth() > room + 1) {
+                    QString chain;
+                    for (QQuickItem *p = i; p; p = p->parentItem()) if (!p->objectName().isEmpty()) chain += QLatin1Char('/') + p->objectName();
+                    problems << QStringLiteral("%1 needs %2 px for its content, has %3 (w=%4 in %5)").arg(name).arg(content->implicitWidth()).arg(room).arg(i->width()).arg(chain);
+                }
+            }
+            // A text box's text starts inside its frame (Material 3 keeps
+            // room above it for a floating label).
+            if (i->inherits("QQuickTextArea") || i->inherits("QQuickTextField")) {
+                const qreal top = i->property("topPadding").toReal(), inset = i->property("topInset").toReal();
+                if (top < inset + 2)
+                    problems << QStringLiteral("%1: text at %2 px, frame at %3 px").arg(name).arg(top).arg(inset);
             }
             const QRectF r = i->mapRectToScene(QRectF(0, 0, i->width(), i->height()));
             // Inside a horizontally clipped parent (the station list never
             // scrolls sideways) - report it.
             if (r.left() < -1 || r.right() > m_window->width() + 1)
                 problems << QStringLiteral("%1 spans %2..%3 in a %4 px window").arg(name).arg(r.left()).arg(r.right()).arg(m_window->width());
+            // Inside the popup or dialog it belongs to.
+            for (QQuickItem *p = i->parentItem(); p; p = p->parentItem()) {
+                if (!p->inherits("QQuickPopupItem")) continue;
+                const QRectF box = p->mapRectToScene(QRectF(0, 0, p->width(), p->height()));
+                if (r.left() < box.left() - 1 || r.right() > box.right() + 1)
+                    problems << QStringLiteral("%1 spans %2..%3 in a popup spanning %4..%5")
+                                    .arg(name).arg(r.left()).arg(r.right()).arg(box.left()).arg(box.right());
+                break;
+            }
         }
         problems.removeDuplicates();
         if (!problems.isEmpty()) QFAIL(qPrintable(where + QStringLiteral(":\n    ") + problems.join(QStringLiteral("\n    "))));
@@ -567,6 +586,46 @@ private slots:
         noWarnings();
     }
 
+    // A distance typed for a station stays in its field once the field
+    // loses the focus (Qt 6.5 and later showed 0 again, the value saved).
+    void kilometersStay()
+    {
+        // Two stations with a callsign at least.
+        while (m_mission->stations()->callsigns().size() < 2) {
+            const int row = m_mission->addStationAt(43.7 + 0.01 * m_mission->stations()->count(), 7.2);
+            m_mission->stations()->setField(row, QStringLiteral("callsign"), QStringLiteral("F4KM%1").arg(row));
+        }
+        // The focus needs the window active (an earlier test may have
+        // activated another).
+        m_window->requestActivate();
+        QTRY_VERIFY(m_window->isActive());
+        QObject *dialog = object("kilometersDialog");
+        QVERIFY(dialog);
+        QMetaObject::invokeMethod(dialog, "open");
+        QTRY_VERIFY(dialog->property("opened").toBool());
+        QTest::qWait(200);
+        QList<QQuickItem *> fields;
+        allByName(dialog->property("contentItem").value<QQuickItem *>(), QStringLiteral("kmField"), &fields);
+        QVERIFY(!fields.isEmpty());
+        QVERIFY2(fields.size() >= 2, "two stations with a callsign expected");
+        QQuickItem *km = fields.first();
+        QTest::mouseClick(m_window, Qt::LeftButton, Qt::NoModifier, centre(km));
+        QTRY_VERIFY(km->hasActiveFocus());
+        km->setProperty("text", QStringLiteral("35"));
+        QMetaObject::invokeMethod(km, "textEdited");
+        QTest::qWait(50);
+        // The focus goes to the next station's field.
+        QTest::mouseClick(m_window, Qt::LeftButton, Qt::NoModifier, centre(fields.at(1)));
+        QTRY_VERIFY(!km->hasActiveFocus());
+        QTRY_COMPARE(km->property("text").toString(), QStringLiteral("35.0 km"));
+        QMetaObject::invokeMethod(dialog, "accept");
+        QTRY_VERIFY(!dialog->property("opened").toBool());
+        const QString callsign = m_mission->stations()->callsigns().first();
+        QCOMPARE(m_mission->kilometersFor(callsign), 35.0);
+        m_mission->setKilometers({});
+        noWarnings();
+    }
+
     void frenchFits()
     {
         m_app->setLanguage(QStringLiteral("fr"));
@@ -594,6 +653,22 @@ private slots:
                 QTRY_VERIFY(!d->property("opened").toBool());
             }
         };
+        // The details of a station tapped on the map, with its buttons.
+        if (QObject *popup = object("infoPopup")) {
+            resize(393, 860);
+            QTRY_VERIFY(item("phoneLayout"));
+            item("phoneLayout")->setProperty("pageIndex", 0);
+            QTest::qWait(100);
+            QMetaObject::invokeMethod(popup, "show", Q_ARG(QVariant, 300), Q_ARG(QVariant, 300),
+                                      Q_ARG(QVariant, QStringLiteral("F4DVN  (S5)")),
+                                      Q_ARG(QVariant, QStringLiteral("DD: 43.948360, 7.497262\nDMS: 43°56'54.1\"N 7°29'50.1\"E\nAzimut: 240° ±4.2°")),
+                                      Q_ARG(QVariant, QStringLiteral("station:0")));
+            QTRY_VERIFY(popup->property("opened").toBool());
+            QTest::qWait(150);
+            checkFits(QStringLiteral("French map info popup"));
+            QMetaObject::invokeMethod(popup, "close");
+            QTRY_VERIFY(!popup->property("opened").toBool());
+        }
         // Phones of several widths: a button's text that fits on one may
         // not on the next (the record button's label shows when it fits).
         for (const int w : {360, 393, 412, 430}) {

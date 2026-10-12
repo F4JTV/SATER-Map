@@ -14,6 +14,7 @@
 #include "app/AppController.h"
 #include "app/AprsLink.h"
 #include "app/Mission.h"
+#include "core/Tr.h"
 #include "map/MapView.h"
 #include "map/TileManager.h"
 #include "platform/AndroidUi.h"
@@ -26,6 +27,10 @@
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QStandardPaths>
+#include <QTimer>
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#include <QPermissions>
+#endif
 
 int main(int argc, char **argv)
 {
@@ -61,7 +66,68 @@ int main(int argc, char **argv)
     // Full screen, as AX25Chat: the bars are hidden now and again each time
     // the application comes back.
     androidui::hideSystemBars();
+    androidui::installServices();
 #endif
+    // APRS goes on minimised or with the phone locked (Android): a
+    // foreground service while a connection is on, with the microphone
+    // type while the built-in modem is on and may listen.  Looked at again
+    // each time the application comes back (the system may have stopped
+    // the service meanwhile).
+    AprsLink *aprs = mission.aprs();
+    const auto keepRunning = [aprs](bool check) {
+        bool microphone = aprs->modemAvailable() && aprs->modemEnabled();
+#if defined(Q_OS_ANDROID) && QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        microphone = microphone && qApp->checkPermission(QMicrophonePermission{}) == Qt::PermissionStatus::Granted;
+#endif
+        androidui::keepRunning(aprs->active(), microphone, SATER_TR("SATER Map: APRS on"),
+                               SATER_TR("Bearings keep going out and coming in with the screen off."),
+                               SATER_TR("APRS in the background"), check);
+    };
+    // Then, once, with the application on screen and the microphone
+    // question settled (Android takes one request at a time and drops the
+    // next): the notifications, and at the next return to the screen the
+    // exemption from battery saving.
+    const auto askOnce = [aprs, &app, &controller]() {
+        static bool notificationsAsked = false, batteryAsked = false;
+        if (!aprs->active() || app.applicationState() != Qt::ApplicationActive) return;
+#if defined(Q_OS_ANDROID) && QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        if (aprs->modemAvailable() && aprs->modemEnabled()
+            && app.checkPermission(QMicrophonePermission{}) == Qt::PermissionStatus::Undetermined)
+            return;
+#endif
+        if (!notificationsAsked) {
+            notificationsAsked = true;
+            if (!androidui::notificationsAllowed()) {
+                androidui::requestNotifications();
+                return;      // its dialog first
+            }
+        }
+        if (!batteryAsked) {
+            batteryAsked = true;
+            if (!controller.backgroundAllowed()) androidui::requestBackground();
+        }
+    };
+    const auto update = [keepRunning, askOnce]() {
+        keepRunning(false);
+        askOnce();
+    };
+    QObject::connect(aprs, &AprsLink::stateChanged, &app, update);
+    QObject::connect(aprs, &AprsLink::settingsChanged, &app, update);
+    QObject::connect(&app, &QGuiApplication::applicationStateChanged, &app, [keepRunning, askOnce](Qt::ApplicationState s) {
+        if (s != Qt::ApplicationActive) return;
+        keepRunning(true);
+        askOnce();
+    });
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &app,
+                     [] { androidui::keepRunning(false, false, QString(), QString(), QString()); });
+    // A bearing received while hidden: a notification.
+    QObject::connect(&mission, &Mission::bearingReceived, &app,
+                     [&app](const QString &callsign, double azimuth, double uncertainty) {
+                         if (app.applicationState() == Qt::ApplicationActive) return;
+                         androidui::notify(SATER_TR("Bearings received"), SATER_TR("Bearing received"),
+                                           SATER_TR("%1: %2° ±%3°").arg(callsign).arg(qRound(azimuth) % 360)
+                                               .arg(uncertainty, 0, 'f', 1));
+                     });
     QObject::connect(&app, &QGuiApplication::applicationStateChanged, &mission,
                      [&controller, &mission](Qt::ApplicationState state) {
                          if (state == Qt::ApplicationActive) controller.activated();
@@ -84,6 +150,10 @@ int main(int argc, char **argv)
     engine.addImportPath(QStringLiteral("qrc:/qt/qml"));
     engine.load(QUrl(QStringLiteral("qrc:/qt/qml/SaterMap/Main.qml")));
     if (engine.rootObjects().isEmpty()) return 1;
+
+    // Once the window is up: Android starts a foreground service only for
+    // an application on screen.
+    QTimer::singleShot(0, &app, update);
 
     const QString shotDir = qEnvironmentVariable("SATER_SCREENSHOT_DIR");
     if (!shotDir.isEmpty()) {

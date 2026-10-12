@@ -840,6 +840,101 @@ private slots:
         QVERIFY(labelsUrl(tileProvider(QStringLiteral("osm")), 1, 0, 0).isEmpty());
     }
 
+    // The report's pages: every section whole on one page (a heading with
+    // its table, the heading with the map), nothing below the text area;
+    // only a table taller than a page is cut, between rows.
+    void pdfReportPages()
+    {
+        ReportData d;
+        d.title = QStringLiteral("Rapport de mission SATER");
+        d.comment = QStringLiteral("Test");
+        for (int i = 0; i < 9; ++i) {
+            Station s;
+            s.callsign = QStringLiteral("F4AA%1").arg(i);
+            s.lat = 43.6 + 0.01 * i;
+            s.lon = 7.2;
+            s.azimuth = 40 + i;
+            s.magnetic = i % 2;
+            s.declination = 3.2;
+            d.stations.append(s);
+        }
+        d.stationCount = int(d.stations.size());
+        for (const Station &s : d.stations) d.kilometers.append({s.callsign, 12.5});
+        ReportData::Estimate e;
+        e.agreement = QStringLiteral("The bearings agree within their uncertainty.");
+        d.estimate = e;
+        d.zone = ReportData::Zone{};
+        d.beacon = ReportData::Beacon{};
+        d.mapImage = QImage(1600, 1100, QImage::Format_RGB32);
+        d.mapImage.fill(Qt::darkCyan);
+        for (int i = 0; i < 30; ++i) {
+            AzimuthRecord r;
+            r.timestamp = QStringLiteral("12/10/2026 06:%1:00").arg(i, 2, 10, QLatin1Char('0'));
+            r.callsign = QStringLiteral("F4AA%1").arg(i % 9);
+            r.azimuth = 100 + i;
+            r.magnetic = true;
+            r.lat = 43.6;
+            r.lon = 7.2;
+            d.history.append(r);
+        }
+        d.logo = QImage(QStringLiteral(":/assets/logo.png"));
+
+        const auto check = [](const QList<ReportPiece> &pieces, double pageHeight, const QString &cut) {
+            QMap<QString, QSet<int>> pages;
+            int last = 0;
+            for (const ReportPiece &p : pieces) {
+                QVERIFY2(p.top >= 0 && p.top + p.height <= pageHeight + 0.5,
+                         qPrintable(QStringLiteral("%1 on page %2: %3..%4 of %5").arg(p.section).arg(p.page)
+                                        .arg(p.top).arg(p.top + p.height).arg(pageHeight)));
+                QVERIFY(p.page >= last);
+                last = p.page;
+                pages[p.section].insert(p.page);
+            }
+            for (auto it = pages.cbegin(); it != pages.cend(); ++it) {
+                if (it.key() == cut) continue;
+                QVERIFY2(it.value().size() == 1, qPrintable(it.key() + QStringLiteral(" is cut between pages")));
+            }
+        };
+        double pageHeight = 0;
+        QList<ReportPiece> pieces = reportLayout(d, &pageHeight);
+        QVERIFY(pageHeight > 900);
+        check(pieces, pageHeight, QString());
+        QVERIFY(pieces.last().page >= 2);   // three pages at least
+        // The map and its heading together.
+        int mapPieces = 0;
+        for (const ReportPiece &p : pieces) mapPieces += p.section == QStringLiteral("Mission map");
+        QCOMPARE(mapPieces, 2);
+
+        // Sixty stations: their table is cut, between rows, every piece
+        // inside its page; the other sections stay whole.
+        for (int i = 9; i < 60; ++i) {
+            Station s = d.stations.first();
+            s.callsign = QStringLiteral("F5B%1").arg(i);
+            d.stations.append(s);
+        }
+        pieces = reportLayout(d, &pageHeight);
+        check(pieces, pageHeight, QStringLiteral("Direction-finding stations"));
+        QSet<int> stationPages;
+        for (const ReportPiece &p : pieces) {
+            if (p.section == QStringLiteral("Direction-finding stations")) stationPages.insert(p.page);
+        }
+        QVERIFY(stationPages.size() >= 2);
+
+        // And the PDF itself, with its page count.
+        QByteArray bytes;
+        QBuffer buf(&bytes);
+        buf.open(QIODevice::WriteOnly);
+        QString err;
+        QVERIFY(writeReport(d, &buf, &err));
+        QCOMPARE(int(bytes.count("/Type /Page\n")) + int(bytes.count("/Type /Page\r")) + int(bytes.count("/Type /Page ")) > 0, true);
+        const QString out = qEnvironmentVariable("SATER_TEST_OUT");
+        if (!out.isEmpty()) {
+            QFile f(out + QStringLiteral("/report-long.pdf"));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(bytes);
+        }
+    }
+
     void pdfReport()
     {
         ReportData d;

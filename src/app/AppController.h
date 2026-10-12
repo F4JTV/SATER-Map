@@ -28,6 +28,9 @@ class AppController : public QObject
     Q_PROPERTY(QString qtVersion READ qtVersion CONSTANT)
     // The software scene graph (headless tests, old GPUs): no shadows.
     Q_PROPERTY(bool flatRendering READ flatRendering CONSTANT)
+    // Android: exempt from battery optimisation, so that APRS keeps its
+    // network with the screen off (always true elsewhere).
+    Q_PROPERTY(bool backgroundAllowed READ backgroundAllowed NOTIFY backgroundChanged)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -50,6 +53,9 @@ public:
 
     Q_INVOKABLE void copyToClipboard(const QString &text);
     Q_INVOKABLE void haptic();
+    bool backgroundAllowed() const;
+    // The system's dialog for the exemption.
+    Q_INVOKABLE void allowBackground();
     // Called when the application comes to the foreground.
     void activated();
 
@@ -57,6 +63,7 @@ signals:
     void themeChanged();
     void languageChanged();
     void keepScreenOnChanged();
+    void backgroundChanged();
 
 private:
     void applyLanguage();

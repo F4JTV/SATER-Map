@@ -43,6 +43,20 @@ All notable changes to SATER Map. Versions follow `bump_version.sh`.
   Windows): Material 3 sets its own side padding, which the record button's
   label and the N/S, E/W and T/M buttons did not account for. Short tab
   names for the coordinate formats on narrow phones.
+- Android: APRS (APRS-IS, KISS, the built-in modem) keeps working with the
+  application minimised or the phone locked (foreground service, wake and
+  Wi-Fi locks, exemption from battery saving asked); bearings received in
+  the background are notified. White splash screens, the system's included.
+- PDF report: each section (a heading and its table, the map) whole on one
+  page, tables inside the margins on every platform (their widths were in
+  pixels, scaled by 4/3 on Android), page numbers; only a table taller than
+  a page is cut between rows, its header repeated.
+- Fixed with Qt 6.5 and later (Android, Windows): a distance typed in the
+  kilometres dialog showed 0 again once the field lost the focus (the value
+  was saved); the history and preset selections did not show; the comment
+  box of the report dialog drew its text and example over its frame; long
+  texts in fields showed their end; the buttons of the map's station popup
+  ran past its edge.
 - The emblem redrawn from its vector original (window, menus, Android
   launcher and splash screen, Windows icon, PDF report).
 - Standard dialog buttons (OK, Cancel, Close, Yes, No) in French too.
