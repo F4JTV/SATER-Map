@@ -396,11 +396,13 @@ QString Mission::teamEntryFor(const QString &source) const
 }
 
 int Mission::applyReceivedBearing(const QString &callsign, double lat, double lon, double trueAzimuth,
-                                  double uncertainty, const QString &signal, const QDateTime &when)
+                                  double uncertainty, const QString &signal, const QDateTime &when,
+                                  const QString &relayedBy)
 {
-    // The row of the sender itself: two SSIDs of one callsign are two
+    // The row of the station itself: two SSIDs of one callsign are two
     // teams.  A row named without SSID, made beforehand for that callsign,
     // becomes the first SSID heard (and the next one gets a row of its own).
+    // An object's name that is no callsign ("PC") is matched the same way.
     const QString src = aprs::normalizeCallsign(callsign);
     const QString base = src.section(QLatin1Char('-'), 0, 0);
     int row = -1, bare = -1;
@@ -442,11 +444,19 @@ int Mission::applyReceivedBearing(const QString &callsign, double lat, double lo
     r.lon = s.lon;
     r.signal = s.signal;
     m_history->append(r);
-    showStatus(SATER_TR("APRS bearing from %1: %2° ±%3° (%4)")
-                   .arg(s.callsign)
-                   .arg(qRound(s.azimuth))
-                   .arg(s.uncertainty, 0, 'f', 1)
-                   .arg(s.signal));
+    if (relayedBy.isEmpty()) {
+        showStatus(SATER_TR("APRS bearing from %1: %2° ±%3° (%4)")
+                       .arg(s.callsign)
+                       .arg(qRound(s.azimuth))
+                       .arg(s.uncertainty, 0, 'f', 1)
+                       .arg(s.signal));
+    } else {
+        showStatus(SATER_TR("APRS bearing of %1, sent by %2: %3° ±%4° (%5)")
+                       .arg(s.callsign, relayedBy)
+                       .arg(qRound(s.azimuth))
+                       .arg(s.uncertainty, 0, 'f', 1)
+                       .arg(s.signal));
+    }
     emit bearingReceived(s.callsign, s.azimuth, s.uncertainty);
     return row;
 }

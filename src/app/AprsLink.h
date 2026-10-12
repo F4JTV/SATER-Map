@@ -1,13 +1,19 @@
 /*
  * AprsLink.h - APRS for the mission: the field teams' bearings in, this
- * station's bearing out.
+ * station's bearing (and those it took down for others) out.
  *
  * Bearings travel as standard APRS DF reports (aprs/DfReport.h) over
  * APRS-IS (internet), a KISS TNC on the network (Dire Wolf or Soundmodem on
  * the command post's PC) and, on Android, the modem built into the
- * application (aprs/ModemPort.h, when built with SATER_MODEM).  A report is taken in only from the operation's callsigns
- * (Mission::team): the station of that callsign moves to where the bearing
- * was taken, gets the bearing, and the bearing goes into the history.
+ * application (aprs/ModemPort.h, when built with SATER_MODEM).  A report
+ * is taken in only from the operation's callsigns (Mission::team): the
+ * station of that callsign moves to where the bearing was taken, gets the
+ * bearing, and the bearing goes into the history.
+ *
+ * The bearing of a station that has no APRS (read out by telephone) goes
+ * out as an APRS object named after it, from this station's callsign; an
+ * object from one of the operation's callsigns updates the station it
+ * names, as that station's own report would.
  *
  * This file is part of SATER Map.
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -136,9 +142,10 @@ public:
 
     // Is this station's row this station's own (its bearing can be sent)?
     Q_INVOKABLE bool isMine(const QString &callsign) const;
-    // Send the bearing of a station row as a DF report by every way that can
-    // send, and record it in the history.  False, with a status message, if
-    // it could not go out.
+    // Send the bearing of a station row by every way that can send, and
+    // record it in the history: this station's own row as a DF report,
+    // another as an object named after its callsign.  False, with a status
+    // message, if it could not go out.
     Q_INVOKABLE bool sendBearing(int row);
     // The team list helpers.
     Q_INVOKABLE bool addTeamCallsign(const QString &callsign);

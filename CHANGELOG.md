@@ -39,6 +39,10 @@ All notable changes to SATER Map. Versions follow `bump_version.sh`.
   "DDHHMM/" timestamps read as local time; an APRS-IS server that refuses
   the login says why; a dead KISS connection is noticed (TCP keepalive); a
   new mission starts with no operation callsigns.
+- New: the bearing of another station (one without APRS, read out by
+  telephone) goes out as an APRS object named after it, with the DF symbol
+  and the bearing fields in the comment; objects from the operation's
+  callsigns update the station they name.
 - Button texts stay inside their buttons with Qt 6.5 and later (Android,
   Windows): Material 3 sets its own side padding, which the record button's
   label and the N/S, E/W and T/M buttons did not account for. Short tab
@@ -57,6 +61,8 @@ All notable changes to SATER Map. Versions follow `bump_version.sh`.
   box of the report dialog drew its text and example over its frame; long
   texts in fields showed their end; the buttons of the map's station popup
   ran past its edge.
+- A drop-down list's choice longer than its box ends with "…" instead of
+  being cut off (the north of the station editor on a phone, in French).
 - The emblem redrawn from its vector original (window, menus, Android
   launcher and splash screen, Windows icon, PDF report).
 - Standard dialog buttons (OK, Cancel, Close, Yes, No) in French too.

@@ -40,7 +40,9 @@ under a tab bar).
   operation's callsigns are taken in (a callsign without SSID stands for
   all its SSIDs, each SSID being a station of its own); a packet log shows
   what came in and what was left out. Other APRS programs (Xastir,
-  APRSIS32) plot the same reports.
+  APRSIS32) plot the same reports. The bearing of a station without APRS,
+  read out by telephone, can be sent for it as an APRS object named after
+  it.
 - Mission timer, history of the recorded bearings (CSV export), kilometres
   driven per station, station presets.
 - Map backgrounds: OpenStreetMap, OpenStreetMap France, OpenTopoMap, Esri
@@ -82,6 +84,7 @@ under a tab bar).
 | Radio | KISS TNC on TCP: Dire Wolf on port 8001 | the built-in modem (USB sound card or headset jack; VOX, CM108 GPIO or serial RTS/DTR for the PTT), or a KISS TNC on TCP |
 | Internet | APRS-IS (rotate.aprs2.net:14580) | APRS-IS, with the APRS-IS passcode to send |
 | Send a bearing | station editor: "OK and send by APRS" | the "Send" button on the team's own card |
+| Send another station's bearing | the same, in that station's editor | the card's menu: "Send by APRS", or its editor |
 
 A report reads, for example,
 `F4ABC-7>APZSAT,WIDE1-1,WIDE2-1:/111023z4345.48N/00725.08E\000/000/251/965 SATER S7 U5.0`:
@@ -91,6 +94,17 @@ reading is corrected by the declination first), N = 9 (manual), range code
 ±5.0°.
 
 The destination APZSAT is in the experimental range of APRS "tocalls".
+
+A station without APRS (its bearing read out by telephone or on the voice
+channel) is relayed as an APRS object named after it, sent from this
+station's callsign, with the DF symbol and the same fields:
+`F4ABC-7>APZSAT,WIDE1-1,WIDE2-1:;F4XYZ-2  *111023z4345.48N/00725.08E\000/000/251/965 SATER S7 U5.0`.
+The name is the station's callsign (9 characters at most, without accents).
+An object from one of the operation's callsigns updates the station it
+names, as that station's own report would; the packet log and the status
+line say who sent it. The APRS specification defines the bearing field for
+DF reports only: other APRS programs show such an object at the station's
+position, without the bearing line.
 
 On the phone APRS keeps going when SATER Map is minimised or the phone
 locked, as long as a connection is on: a foreground service (its

@@ -1316,6 +1316,54 @@ private slots:
         out.lon = -0.5;
         const QByteArray south = encodeDfReport(out, 10);
         QVERIFY2(south.contains("3400.00S/00030.00W\\000/000/360/9"), south.constData());
+
+        // Another station's bearing: an object named after it, the same
+        // symbol and fields; trailing spaces are not part of the name.
+        out = DfReport();
+        out.object = QStringLiteral("F4XYZ-2");
+        out.lat = 43.7580;
+        out.lon = 7.4180;
+        out.bearing = 251.4;
+        out.uncertainty = 12.5;
+        out.signal = QStringLiteral("S9+10");
+        out.time = QDateTime(QDate(2026, 10, 11), QTime(10, 23, 41), QTimeZone::utc());
+        const QByteArray object = encodeDfObject(out, 100);
+        QCOMPARE(object, QByteArray(";F4XYZ-2  *111023z4345.48N/00725.08E\\000/000/251/964 SATER S9+10 U12.5"));
+        // The comment after the data extension: within an object's 36.
+        QVERIFY(object.size() - 1 - 9 - 1 - 7 - 19 - 7 <= 36);
+        r = parseDfReport(QStringLiteral("F4AAA-7"), object, now);
+        QVERIFY(r);
+        QCOMPARE(r->source, QStringLiteral("F4AAA-7"));
+        QCOMPARE(r->object, QStringLiteral("F4XYZ-2"));
+        QCOMPARE(r->station(), QStringLiteral("F4XYZ-2"));
+        QCOMPARE(r->bearing, 251.0);
+        QCOMPARE(r->uncertainty, 12.5);
+        QCOMPARE(r->signal, QStringLiteral("S9+10"));
+        QCOMPARE(r->time, QDateTime(QDate(2026, 10, 11), QTime(10, 23), QTimeZone::utc()));
+        // A DF report is its sender's own.
+        QCOMPARE(parseDfReport(QStringLiteral("F4AAA"), info, now)->station(), QStringLiteral("F4AAA"));
+        // A name with a space inside (any printable character goes).
+        out.object = QStringLiteral("PC NORD");
+        r = parseDfReport(QStringLiteral("F4AAA"), encodeDfObject(out, 100), now);
+        QVERIFY(r);
+        QCOMPARE(r->object, QStringLiteral("PC NORD"));
+        // Not bearings: a killed object, another symbol, no bearing field,
+        // no name, cut short.
+        QVERIFY(!parseDfReport(QStringLiteral("X"), ";F4XYZ-2  _111023z4345.48N/00725.08E\\000/000/251/965", now));
+        QVERIFY(!parseDfReport(QStringLiteral("X"), ";LEADER   *092345z4903.50N/07201.75W>088/036/270/729", now));
+        QVERIFY(!parseDfReport(QStringLiteral("X"), ";LEADER   *092345z4903.50N/07201.75W\\088/036", now));
+        QVERIFY(!parseDfReport(QStringLiteral("X"), ";         *111023z4345.48N/00725.08E\\000/000/251/965", now));
+        QVERIFY(!parseDfReport(QStringLiteral("X"), ";F4XYZ-2  *1110", now));
+        // Names that cannot be one: empty, too long, accents, | and ~.
+        QVERIFY(isValidObjectName(QStringLiteral("F4XYZ-15")));
+        QVERIFY(!isValidObjectName(QString()));
+        QVERIFY(!isValidObjectName(QStringLiteral("RELAIS NORD")));
+        QVERIFY(!isValidObjectName(QStringLiteral("Crête")));
+        QVERIFY(!isValidObjectName(QStringLiteral("A|B")));
+        QVERIFY(!isValidObjectName(QStringLiteral(" PC")));
+        out.object = QStringLiteral("RELAIS NORD");
+        QVERIFY(encodeDfObject(out, 100).isEmpty());
+
         QCOMPARE(qualityFromUncertainty(0.2), 9);
         QCOMPARE(qualityFromUncertainty(5), 5);
         QCOMPARE(qualityFromUncertainty(8), 4);
@@ -1617,6 +1665,121 @@ private slots:
         // A new mission is a new operation: no callsign carried over.
         m.newMission();
         QVERIFY(m.team().isEmpty());
+    }
+
+    // Another station's bearing (read out by telephone) relayed as an APRS
+    // object: taken in from the operation's callsigns into the station it
+    // names; sent for a row that is not this station's own.
+    void aprsObjectRelay()
+    {
+        using namespace sater::aprs;
+        Mission m;
+        m.newMission();
+        AprsLink *aprs = m.aprs();
+        m.setTeam({QStringLiteral("F4AAA"), QStringLiteral("F1XYZ")});
+        auto packet = [](const char *line) { return *parseTnc2(line); };
+        auto lastLog = [aprs]() { return aprs->log().first().toMap(); };
+
+        // From a team member, about F1XYZ: F1XYZ's row, made, with the
+        // bearing; the status says who sent it.
+        aprs->handlePacket(packet("F4AAA-7>APZSAT,WIDE1-1:;F1XYZ    *111023z4345.48N/00725.08E\\000/000/251/965 SATER S7 U5.0"),
+                           QStringLiteral("RF"));
+        int row = m.stations()->rowOfCallsign(QStringLiteral("F1XYZ"));
+        QVERIFY(row >= 0);
+        QCOMPARE(m.stations()->rowOfCallsign(QStringLiteral("F4AAA-7")), -1);
+        QCOMPARE(m.stations()->get(row).value(QStringLiteral("azimuth")).toDouble(), 251.0);
+        QCOMPARE(m.stations()->get(row).value(QStringLiteral("signal")).toString(), QStringLiteral("S7"));
+        QCOMPARE(m.history()->count(), 1);
+        QCOMPARE(m.history()->records().last().callsign, QStringLiteral("F1XYZ"));
+        QVERIFY2(m.statusMessage().contains(QStringLiteral("F4AAA-7")), qPrintable(m.statusMessage()));
+        QCOMPARE(lastLog().value(QStringLiteral("kind")).toString(), QStringLiteral("bearing"));
+        // The same object by APRS-IS, through a gateway (third party): in already.
+        aprs->handlePacket(packet("F5GATE>APRS,TCPIP*,qAR,F5GATE:}F4AAA-7>APZSAT,TCPIP,F5GATE*:;F1XYZ    *111023z4345.48N/00725.08E\\000/000/251/965 SATER S7 U5.0"),
+                           QStringLiteral("APRS-IS"));
+        QCOMPARE(m.history()->count(), 1);
+        QVERIFY(lastLog().value(QStringLiteral("text")).toString().contains(QStringLiteral("already received")));
+        // F1XYZ's own report of that very bearing, after the relay: in already.
+        aprs->handlePacket(packet("F1XYZ>APZSAT:/111023z4345.48N/00725.08E\\000/000/251/965 SATER S7 U5.0"), QStringLiteral("RF"));
+        QCOMPARE(m.history()->count(), 1);
+        QVERIFY(lastLog().value(QStringLiteral("text")).toString().contains(QStringLiteral("already received")));
+        // A name that is no callsign; a later bearing moves the row.
+        aprs->handlePacket(packet("F4AAA-7>APZSAT:;PC NORD  *111030z4340.00N/00710.00E\\000/000/120/965 SATER S5 U4.0"),
+                           QStringLiteral("RF"));
+        row = m.stations()->rowOfCallsign(QStringLiteral("PC NORD"));
+        QVERIFY(row >= 0);
+        QCOMPARE(m.stations()->get(row).value(QStringLiteral("azimuth")).toDouble(), 120.0);
+        aprs->handlePacket(packet("F4AAA-7>APZSAT:;PC NORD  *111040z4341.00N/00711.00E\\000/000/130/965 SATER S5 U4.0"),
+                           QStringLiteral("RF"));
+        QCOMPARE(m.stations()->rowOfCallsign(QStringLiteral("PC NORD")), row);
+        QCOMPARE(m.stations()->get(row).value(QStringLiteral("azimuth")).toDouble(), 130.0);
+        QCOMPARE(m.history()->count(), 3);
+        // Not from the operation, killed, or another kind of object: nothing.
+        const int rows = m.stations()->count();
+        aprs->handlePacket(packet("F9ZZZ>APZSAT:;F2QQQ    *111023z4345.48N/00725.08E\\000/000/200/965 SATER S7 U5.0"), QStringLiteral("RF"));
+        QCOMPARE(lastLog().value(QStringLiteral("kind")).toString(), QStringLiteral("ignored"));
+        aprs->handlePacket(packet("F4AAA-7>APZSAT:;F1XYZ    _111050z4345.48N/00725.08E\\000/000/300/965"), QStringLiteral("RF"));
+        aprs->handlePacket(packet("F4AAA-7>APRS:;LEADER   *111050z4903.50N/07201.75W>088/036"), QStringLiteral("RF"));
+        QCOMPARE(m.stations()->count(), rows);
+        QCOMPARE(m.history()->count(), 3);
+        QCOMPARE(aprs->bearingsReceived(), 3);
+
+        // This station: an object about it from the team is left out (its
+        // bearing is read here).
+        aprs->setMyCallsign(QStringLiteral("F5OWN-1"));
+        const int own = m.stations()->addAt(43.70, 7.25);
+        m.stations()->setField(own, QStringLiteral("callsign"), QStringLiteral("F5OWN"));
+        m.stations()->setField(own, QStringLiteral("azimuth"), 75.0);
+        aprs->handlePacket(packet("F4AAA-7>APZSAT:;F5OWN-1  *111023z4345.48N/00725.08E\\000/000/251/965 SATER S7 U5.0"), QStringLiteral("RF"));
+        QCOMPARE(m.stations()->get(own).value(QStringLiteral("azimuth")).toDouble(), 75.0);
+        QVERIFY(lastLog().value(QStringLiteral("text")).toString().contains(QStringLiteral("about this station")));
+        QCOMPARE(m.history()->count(), 3);
+
+        // Sending F1XYZ's bearing: an object named F1XYZ from F5OWN-1.
+        QTcpServer tnc;
+        QVERIFY(tnc.listen(QHostAddress::LocalHost));
+        aprs->setKissHost(QStringLiteral("127.0.0.1"));
+        aprs->setKissPort(tnc.serverPort());
+        aprs->setKissEnabled(true);
+        QTRY_VERIFY(tnc.hasPendingConnections() || tnc.waitForNewConnection(50));
+        QTcpSocket *peer = tnc.nextPendingConnection();
+        QTRY_VERIFY(aprs->canSend());
+        const int other = m.stations()->rowOfCallsign(QStringLiteral("F1XYZ"));
+        m.stations()->setField(other, QStringLiteral("azimuth"), 260.0);
+        QVERIFY(aprs->sendBearing(other));
+        QCOMPARE(m.history()->count(), 4);
+        QVERIFY2(m.statusMessage().contains(QStringLiteral("F1XYZ")), qPrintable(m.statusMessage()));
+        QByteArray bytes;
+        QTRY_VERIFY((bytes += peer->readAll()).count(char(0xC0)) >= 2);
+        const auto sent = decodeFrame(KissDecoder().feed(bytes).first());
+        QVERIFY(sent);
+        QCOMPARE(sent->source, QStringLiteral("F5OWN-1"));
+        QVERIFY2(sent->info.startsWith(";F1XYZ    *"), sent->info.constData());
+        const auto df = parseDfReport(*sent);
+        QVERIFY(df);
+        QCOMPARE(df->object, QStringLiteral("F1XYZ"));
+        QCOMPARE(df->bearing, 260.0);
+        QCOMPARE(lastLog().value(QStringLiteral("kind")).toString(), QStringLiteral("sent"));
+        // Heard back: our own.
+        aprs->handlePacket(*sent, QStringLiteral("RF"));
+        QVERIFY(lastLog().value(QStringLiteral("text")).toString().contains(QStringLiteral("our own")));
+        QCOMPARE(m.history()->count(), 4);
+        // This station's own row still goes out as a DF report.
+        bytes.clear();
+        QVERIFY(aprs->sendBearing(own));
+        QTRY_VERIFY((bytes += peer->readAll()).count(char(0xC0)) >= 2);
+        const auto mine = decodeFrame(KissDecoder().feed(bytes).first());
+        QVERIFY(mine && mine->info.startsWith('/'));
+        QVERIFY(parseDfReport(*mine)->object.isEmpty());
+        // Rows that cannot name an object: no name, too long a name.
+        const int unnamed = m.stations()->addAt(43.5, 7.0);
+        m.stations()->setField(unnamed, QStringLiteral("azimuth"), 10.0);
+        QVERIFY(!aprs->sendBearing(unnamed));
+        m.stations()->setField(unnamed, QStringLiteral("callsign"), QStringLiteral("RELAIS NORD"));
+        QVERIFY(!aprs->sendBearing(unnamed));
+        QVERIFY2(m.statusMessage().contains(QStringLiteral("RELAIS NORD")), qPrintable(m.statusMessage()));
+        QCOMPARE(m.history()->count(), 5);
+        aprs->setKissEnabled(false);
+        aprs->setMyCallsign(QString());
     }
 
     // What the review of the APRS code found: a server that refuses the

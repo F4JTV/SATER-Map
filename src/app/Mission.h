@@ -190,9 +190,12 @@ public:
     // the list says F4AAA), empty if none.
     QString teamEntryFor(const QString &source) const;
     // A bearing received from the team: the station (made if needed) moved
-    // there with this bearing, and recorded in the history.  Returns its row.
+    // there with this bearing, and recorded in the history.  relayedBy: the
+    // team member who sent it for that station (an APRS object), empty when
+    // the station sent its own.  Returns its row.
     int applyReceivedBearing(const QString &callsign, double lat, double lon, double trueAzimuth,
-                             double uncertainty, const QString &signal, const QDateTime &when);
+                             double uncertainty, const QString &signal, const QDateTime &when,
+                             const QString &relayedBy = QString());
 
     bool magneticByDefault() const { return m_stations->magneticByDefault(); }
     void setMagneticByDefault(bool on);

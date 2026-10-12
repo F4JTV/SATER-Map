@@ -106,6 +106,15 @@ QDateTime readTimestamp(const QByteArray &t, const QDateTime &now)
 
 } // namespace
 
+bool isValidObjectName(const QString &name)
+{
+    if (name.isEmpty() || name.size() > 9 || name.at(0) == QLatin1Char(' ')) return false;
+    for (const QChar c : name) {
+        if (c.unicode() < 0x20 || c.unicode() > 0x7e || c == QLatin1Char('|') || c == QLatin1Char('~')) return false;
+    }
+    return true;
+}
+
 int qualityFromUncertainty(double uncertaintyDeg)
 {
     const double width = 2 * std::max(0.0, uncertaintyDeg);
@@ -130,6 +139,16 @@ std::optional<DfReport> parseDfReport(const QString &source, const QByteArray &i
     if (type == '/' || type == '@') {
         r.time = readTimestamp(info.mid(1, 7), now);
         pos = 8;
+    } else if (type == ';') {
+        // ";NAME_____*DDHHMMz": a live object only (a killed one, '_', is
+        // no bearing).  Trailing spaces are not part of the name.
+        if (info.size() < 18 || info.at(10) != '*') return std::nullopt;
+        QByteArray name = info.mid(1, 9);
+        while (name.endsWith(' ')) name.chop(1);
+        r.object = QString::fromLatin1(name);
+        if (!isValidObjectName(r.object)) return std::nullopt;
+        r.time = readTimestamp(info.mid(11, 7), now);
+        pos = 18;
     } else if (type != '!' && type != '=') {
         return std::nullopt;
     }
@@ -196,7 +215,11 @@ std::optional<DfReport> parseDfReport(const Packet &packet, const QDateTime &now
     return parseDfReport(packet.source, packet.info, now);
 }
 
-QByteArray encodeDfReport(const DfReport &report, double rangeKm)
+namespace {
+
+// Timestamp, position, symbol, 000/000/BRG/NRQ and SATER's comment: what
+// follows the data type (and an object's name).
+QByteArray dfBody(const DfReport &report, double rangeKm)
 {
     const QDateTime when = (report.time.isValid() ? report.time : QDateTime::currentDateTimeUtc()).toUTC();
     int bearing = int(std::lround(normalizeAzimuth(report.bearing)));
@@ -205,8 +228,7 @@ QByteArray encodeDfReport(const DfReport &report, double rangeKm)
     const int range = std::clamp(int(std::ceil(std::log2(miles))), 0, 9);
     const int q = std::max(1, qualityFromUncertainty(report.uncertainty));
 
-    QByteArray info = "/";
-    info += when.toString(QStringLiteral("ddHHmm")).toLatin1() + 'z';
+    QByteArray info = when.toString(QStringLiteral("ddHHmm")).toLatin1() + 'z';
     info += writeCoordinate(report.lat, true);
     info += '/';
     info += writeCoordinate(report.lon, false);
@@ -221,6 +243,21 @@ QByteArray encodeDfReport(const DfReport &report, double rangeKm)
     if (!report.signal.isEmpty()) info += ' ' + report.signal.toLatin1();
     info += " U" + QByteArray::number(report.uncertainty, 'f', 1);
     return info;
+}
+
+} // namespace
+
+QByteArray encodeDfReport(const DfReport &report, double rangeKm)
+{
+    return '/' + dfBody(report, rangeKm);
+}
+
+QByteArray encodeDfObject(const DfReport &report, double rangeKm)
+{
+    // The comment ("/251/965 SATER S7 U5.0") stays within the 36
+    // characters an object with a data extension has.
+    if (!isValidObjectName(report.object)) return {};
+    return ';' + report.object.toLatin1().leftJustified(9, ' ') + '*' + dfBody(report, rangeKm);
 }
 
 } // namespace sater::aprs

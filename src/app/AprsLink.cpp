@@ -465,26 +465,36 @@ void AprsLink::handlePacket(const Packet &packet, const QString &via)
         addLog(QStringLiteral("other"), SATER_TR("[%1] %2 (our own)").arg(via, line));
         return;
     }
+    // An object (another station's bearing) is trusted as its sender is.
     if (!m_mission || m_mission->teamEntryFor(report->source).isEmpty()) {
         addLog(QStringLiteral("ignored"), SATER_TR("[%1] %2 (not in the operation)").arg(via, line));
+        return;
+    }
+    // An object about this station: its bearing is read here, never taken
+    // from another.
+    const QString station = report->station();
+    const bool relayed = normalizeCallsign(station) != report->source;
+    if (relayed && isMine(station)) {
+        addLog(QStringLiteral("other"), SATER_TR("[%1] %2 (about this station)").arg(via, line));
         return;
     }
     if (!remember(*report)) {
         addLog(QStringLiteral("other"), SATER_TR("[%1] %2 (already received)").arg(via, line));
         return;
     }
-    // The sender's own row: F4ABC-1 and F4ABC-2 are two teams even when
-    // the operation lists F4ABC.
-    m_mission->applyReceivedBearing(report->source, report->lat, report->lon, report->bearing, report->uncertainty,
-                                    report->signal, report->time);
+    // The row of the station that took the bearing: F4ABC-1 and F4ABC-2
+    // are two teams even when the operation lists F4ABC.
+    m_mission->applyReceivedBearing(station, report->lat, report->lon, report->bearing, report->uncertainty,
+                                    report->signal, report->time, relayed ? report->source : QString());
     ++m_received;
     addLog(QStringLiteral("bearing"), QStringLiteral("[%1] %2").arg(via, line));
 }
 
 bool AprsLink::remember(const DfReport &report)
 {
-    // The report itself, whichever way and path it came by.
-    const QString key = report.source + QLatin1Char('|') + QString::number(report.lat, 'f', 5) + QLatin1Char('|')
+    // The bearing itself, whichever way and path it came by, and whoever
+    // sent it (the station, or another for it).
+    const QString key = normalizeCallsign(report.station()) + QLatin1Char('|') + QString::number(report.lat, 'f', 5) + QLatin1Char('|')
                         + QString::number(report.lon, 'f', 5) + QLatin1Char('|') + QString::number(report.bearing)
                         + QLatin1Char('|') + report.time.toString(Qt::ISODate);
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -518,10 +528,26 @@ bool AprsLink::sendBearing(int row)
     r.uncertainty = s.uncertainty;
     r.signal = s.signal;
     r.time = QDateTime::currentDateTimeUtc();
+    // Another station's bearing: an object named after it, from this
+    // station's callsign.
+    const bool own = isMine(s.callsign);
+    if (!own) {
+        const QString name = s.callsign.trimmed();
+        r.object = isValidCallsign(name) ? normalizeCallsign(name) : name;
+        if (r.object.isEmpty()) {
+            m_mission->showStatus(SATER_TR("Give this station a callsign first: its bearing goes out under that name."));
+            return false;
+        }
+        if (!isValidObjectName(r.object)) {
+            m_mission->showStatus(SATER_TR("%1 cannot name an APRS object: 9 characters at most, without accents.")
+                                      .arg(r.object));
+            return false;
+        }
+    }
     Packet p;
     p.source = m_myCallsign;
     p.destination = kToCall;
-    p.info = encodeDfReport(r, m_mission->azimuthLengthKm());
+    p.info = own ? encodeDfReport(r, m_mission->azimuthLengthKm()) : encodeDfObject(r, m_mission->azimuthLengthKm());
     QStringList ways;
     bool radio = m_kiss->canSend() && m_kiss->send(p);
 #ifdef SATER_MODEM
@@ -540,9 +566,18 @@ bool AprsLink::sendBearing(int row)
     shown.path = pathList();
     addLog(QStringLiteral("sent"), QStringLiteral("[%1] %2").arg(ways.join(QStringLiteral(" + ")), shown.toTnc2()));
     m_mission->recordStation(row);
-    m_mission->showStatus(SATER_TR("Bearing sent (%1): %2° ±%3°")
-                              .arg(ways.join(QStringLiteral(", ")))
-                              .arg(qRound(normalizeAzimuth(r.bearing)) % 360)
-                              .arg(s.uncertainty, 0, 'f', 1));
+    const QString shownWays = ways.join(QStringLiteral(", "));
+    const int bearing = qRound(normalizeAzimuth(r.bearing)) % 360;
+    if (own) {
+        m_mission->showStatus(SATER_TR("Bearing sent (%1): %2° ±%3°")
+                                  .arg(shownWays)
+                                  .arg(bearing)
+                                  .arg(s.uncertainty, 0, 'f', 1));
+    } else {
+        m_mission->showStatus(SATER_TR("Bearing of %1 sent as an APRS object (%2): %3° ±%4°")
+                                  .arg(r.object, shownWays)
+                                  .arg(bearing)
+                                  .arg(s.uncertainty, 0, 'f', 1));
+    }
     return true;
 }

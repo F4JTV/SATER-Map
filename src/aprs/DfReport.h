@@ -19,6 +19,17 @@
  * SATER Map adds to the comment what the format has no field for: the
  * S-meter reading and the exact uncertainty ("SATER S7 U5.0").
  *
+ * The bearing of another station (one without APRS, heard by telephone)
+ * goes out as an APRS object (chapter 11) named after that station, sent
+ * from this station's callsign, with the same symbol and fields:
+ *
+ *     ;F4XYZ-7  *111023z4345.48N/00725.08E\000/000/251/965 SATER S7 U5.0
+ *
+ * The specification defines BRG/NRQ for DF reports only: for an object it
+ * is the comment (which "may contain any appropriate APRS data").  Other
+ * programs show the object at the station's position; SATER Map reads the
+ * bearing from it.
+ *
  * This file is part of SATER Map.
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
@@ -35,6 +46,8 @@ namespace sater::aprs {
 
 struct DfReport {
     QString source;              // the station that sent it
+    QString object;              // an object: the station the bearing is of
+                                 // (its name); empty: the sender's own
     double lat = 0.0;
     double lon = 0.0;
     double bearing = 0.0;        // true, [0, 360)
@@ -46,9 +59,17 @@ struct DfReport {
     bool fromSaterMap = false;   // the comment carried SATER's fields
     QDateTime time;              // when taken (UTC), from the timestamp; invalid if none
     QString comment;             // what follows the bearing field
+
+    // The station the bearing was taken by.
+    QString station() const { return object.isEmpty() ? source : object; }
 };
 
-// The DF report in an APRS information field, if it is one.  now dates a
+// Can name an APRS object: 1 to 9 printable ASCII characters (spaces
+// inside), no | or ~ (kept by the network), not starting with a space.
+bool isValidObjectName(const QString &name);
+
+// The DF report in an APRS information field, if it is one: a position
+// report, or a live object (object set to its name).  now dates a
 // "DDHHMMz" timestamp (day of the month, hours, minutes).
 std::optional<DfReport> parseDfReport(const QString &source, const QByteArray &info,
                                       const QDateTime &now = QDateTime::currentDateTimeUtc());
@@ -59,6 +80,9 @@ std::optional<DfReport> parseDfReport(const Packet &packet, const QDateTime &now
 // invalid), the uncertainty sets Q, rangeKm sets R, the signal goes into
 // the SATER comment.
 QByteArray encodeDfReport(const DfReport &report, double rangeKm);
+// The same as a live object named report.object (a valid object name, or
+// an empty result).
+QByteArray encodeDfObject(const DfReport &report, double rangeKm);
 
 // Q from the half-width of the cone, and back (the upper bound's half).
 int qualityFromUncertainty(double uncertaintyDeg);

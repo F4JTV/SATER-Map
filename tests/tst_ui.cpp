@@ -536,6 +536,40 @@ private slots:
         QTest::mouseClick(m_window, Qt::LeftButton, Qt::NoModifier, centre(sendButtons().first()));
         QTRY_VERIFY(m_mission->statusMessage().contains(QStringLiteral("could not be sent")));
         QCOMPARE(m_mission->history()->count(), records);
+        // Another station's card: "Send by APRS" in its menu (an object
+        // named after it); not in this station's own menu.
+        auto relayItem = [&](const QString &callsign) -> QQuickItem * {
+            QList<QQuickItem *> fields;
+            allByName(cards, QStringLiteral("callsignField"), &fields);
+            for (QQuickItem *f : fields) {
+                if (f->property("text").toString() != callsign) continue;
+                QQuickItem *card = f;
+                while (card && !card->property("stationColor").isValid()) card = card->parentItem();
+                return card ? card->findChild<QQuickItem *>(QStringLiteral("relayItem")) : nullptr;
+            }
+            return nullptr;
+        };
+        const QString other = m_mission->stations()->get(1).value(QStringLiteral("callsign")).toString();
+        for (const QString &c : {own, other}) {
+            QQuickItem *relay = relayItem(c);
+            QVERIFY2(relay, qPrintable(c));
+            QObject *menu = relay->parent();
+            while (menu && !menu->inherits("QQuickMenu")) menu = menu->parent();
+            QVERIFY(menu);
+            QMetaObject::invokeMethod(menu, "open");
+            QTRY_VERIFY(menu->property("opened").toBool());
+            if (c == own) {
+                QVERIFY(!relay->isVisible());
+                QCOMPARE(relay->height(), 0.0);
+                QMetaObject::invokeMethod(menu, "close");
+                QTRY_VERIFY(!menu->property("opened").toBool());
+                continue;
+            }
+            QTRY_VERIFY(relay->isVisible() && relay->height() > 0);
+            QTest::mouseClick(m_window, Qt::LeftButton, Qt::NoModifier, centre(relay));
+            QTRY_VERIFY(!menu->property("opened").toBool());
+        }
+        QTRY_VERIFY(m_mission->statusMessage().contains(QStringLiteral("could not be sent")));
         aprs->setMyCallsign(QString());
         QTRY_VERIFY(sendButtons().isEmpty());
 
@@ -652,6 +686,17 @@ private slots:
                 QMetaObject::invokeMethod(d, "close");
                 QTRY_VERIFY(!d->property("opened").toBool());
             }
+            // Another station's editor: its bearing goes out as an object,
+            // which a note under the button says.
+            QObject *editor = object("stationEditor");
+            QMetaObject::invokeMethod(editor, "openFor", Q_ARG(QVariant, 1));
+            QTRY_VERIFY(editor->property("opened").toBool());
+            QTRY_VERIFY(item("editorRelayNote") && item("editorRelayNote")->isVisible());
+            QVERIFY(item("editorRelayNote")->property("text").toString().contains(QStringLiteral("objet APRS")));
+            QTest::qWait(150);
+            checkFits(QStringLiteral("French %1 station editor, another station").arg(where));
+            QMetaObject::invokeMethod(editor, "close");
+            QTRY_VERIFY(!editor->property("opened").toBool());
         };
         // The details of a station tapped on the map, with its buttons.
         if (QObject *popup = object("infoPopup")) {
